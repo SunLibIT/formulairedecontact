@@ -149,3 +149,26 @@ describe('updateRecords', () => {
     expect(String(url)).toContain(TABLE);
   });
 });
+
+describe('forme de l’URL du proxy', () => {
+  // Contrat entre le client et la fonction serverless. Il a déjà cassé une
+  // fois : la cible passait en segments de chemin et la route attrape-tout de
+  // Vercel ne répondait que pour un segment, donc toute mise à jour d'un
+  // enregistrement renvoyait 404. La cible passe désormais en paramètres, sur
+  // un chemin fixe — ce test l'y maintient.
+  it('vise un chemin fixe, la cible en paramètres', async () => {
+    await updateRecords(TABLE, makeRecords(1));
+    const url = new URL(String(fetchMock.mock.calls[0][0]), 'https://exemple.test');
+
+    expect(url.pathname).toBe('/api/airtable');
+    expect(url.searchParams.get('table')).toBe(TABLE);
+  });
+
+  it('n’ajoute aucun segment de chemin après /api/airtable', async () => {
+    await updateRecords(TABLE, makeRecords(1));
+    const url = new URL(String(fetchMock.mock.calls[0][0]), 'https://exemple.test');
+    // Deux segments — `/api/airtable/tblXXX/recYYY` — étaient précisément le
+    // cas que Vercel ne routait pas.
+    expect(url.pathname.split('/').filter(Boolean)).toEqual(['api', 'airtable']);
+  });
+});

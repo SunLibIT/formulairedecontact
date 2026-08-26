@@ -54,12 +54,26 @@ export function isConfigured(): boolean {
 /** `true` quand le token voyage dans le navigateur — à signaler à l'utilisateur. */
 export const usesDirectToken = Boolean(DIRECT_TOKEN);
 
+/**
+ * Construit l'URL de la requête.
+ *
+ * En mode direct, `path` est le chemin Airtable tel quel. En mode proxy, la
+ * cible passe en **paramètres** (`table`, `record`) et non en segments : le
+ * proxy vit sur un chemin fixe, `/api/airtable`. Une route attrape-tout
+ * répondait pour un segment mais renvoyait 404 pour deux, ce qui cassait
+ * silencieusement toute mise à jour d'enregistrement.
+ */
 function buildUrl(path: string, params?: URLSearchParams): string {
-  const base = DIRECT_TOKEN
-    ? `https://api.airtable.com/v0/${BASE_ID}/${path}`
-    : `${PROXY_PATH}/${path}`;
-  const qs = params?.toString();
-  return qs ? `${base}?${qs}` : base;
+  if (DIRECT_TOKEN) {
+    const qs = params?.toString();
+    return `https://api.airtable.com/v0/${BASE_ID}/${path}${qs ? `?${qs}` : ''}`;
+  }
+
+  const [tableId, recordId] = path.split('/');
+  const merged = new URLSearchParams(params);
+  merged.set('table', tableId);
+  if (recordId) merged.set('record', recordId);
+  return `${PROXY_PATH}?${merged.toString()}`;
 }
 
 async function request<T>(

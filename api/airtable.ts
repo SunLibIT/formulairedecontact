@@ -6,10 +6,18 @@
  * n'importe quel visiteur du site pourrait extraire un token en lecture et en
  * écriture sur la base entière. Ici, le token reste côté serveur.
  *
- * Le proxy est volontairement étroit :
+ * **Chemin statique, cible en paramètres.** La table et l'enregistrement
+ * arrivent par `?table=` et `?record=`, pas en segments d'URL. La version
+ * précédente utilisait une route attrape-tout `api/airtable/[...path].ts` :
+ * elle répondait pour un segment (`/api/airtable/tblXXX`) mais renvoyait 404
+ * pour deux (`/api/airtable/tblXXX/recYYY`), ce qui cassait toute mise à jour
+ * d'un enregistrement. Un chemin fixe supprime la dépendance au routage
+ * dynamique, et donc la panne.
+ *
+ * Le proxy reste volontairement étroit :
  *  - seules les tables de cette application sont joignables ;
  *  - seuls GET et PATCH existent, et c'est le routeur qui l'impose : toute
- *    autre méthode reçoit un 405 sans que la fonction soit même invoquée ;
+ *    autre méthode reçoit un 405 sans que la fonction soit invoquée ;
  *  - la requête est reconstruite paramètre par paramètre, jamais relayée
  *    telle quelle.
  *
@@ -27,7 +35,10 @@ const ALLOWED_TABLES = new Set([
   'tblySHLLDvHjk2ktK', // RH
 ]);
 
-/** Paramètres de requête relayés vers Airtable. */
+/**
+ * Paramètres relayés vers Airtable. `table` et `record` en sont absents à
+ * dessein : ils désignent la cible et sont consommés ici.
+ */
 const ALLOWED_PARAMS = new Set([
   'pageSize',
   'offset',
@@ -59,21 +70,14 @@ async function proxy(req: Request): Promise<Response> {
   }
 
   const url = new URL(req.url);
-  // Chemin attendu : /api/airtable/<tableId>[/<recordId>]
-  const segments = url.pathname
-    .replace(/^\/api\/airtable\/?/, '')
-    .split('/')
-    .filter(Boolean);
-  const [tableId, recordId] = segments;
+  const tableId = url.searchParams.get('table') ?? '';
+  const recordId = url.searchParams.get('record');
 
-  if (!tableId || !ALLOWED_TABLES.has(tableId)) {
+  if (!ALLOWED_TABLES.has(tableId)) {
     return json({ error: { message: 'Table inconnue ou non autorisée.' } }, 403);
   }
   if (recordId && !/^rec[A-Za-z0-9]{14}$/.test(recordId)) {
     return json({ error: { message: "Identifiant d'enregistrement invalide." } }, 400);
-  }
-  if (segments.length > 2) {
-    return json({ error: { message: 'Chemin non reconnu.' } }, 400);
   }
 
   // Reconstruction de la requête : on ne relaie que les paramètres connus.
