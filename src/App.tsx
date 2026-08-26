@@ -67,7 +67,7 @@ type View = LeadTable | 'kpi';
 const TAB_LABEL: Record<View, string> = {
   contact: 'Demandes de contact',
   solar: 'Leads simulateur',
-  kpi: 'Indicateurs',
+  kpi: 'KPI',
 };
 
 export default function App() {
@@ -83,7 +83,7 @@ export default function App() {
   // basculement instantané.
   const contact = useLeads('contact', byId);
   const solar = useLeads('solar', byId);
-  // L'onglet Indicateurs lit les deux tables ; on l'aligne sur les demandes de
+  // L'onglet KPI lit les deux tables ; on l'aligne sur les demandes de
   // contact pour l'état de chargement et le bouton d'actualisation.
   const active = tab === 'solar' ? solar : contact;
 
@@ -472,8 +472,6 @@ export default function App() {
                       key={lead.id}
                       lead={lead}
                       onOpen={() => setSelected(lead)}
-                      onQuickAction={handleQuickAction}
-                      viewerStaffId={viewer.staff?.id ?? null}
                     />
                   ))}
                 </div>

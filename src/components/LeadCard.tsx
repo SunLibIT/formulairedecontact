@@ -16,7 +16,6 @@
  * sans revendiquer la place d'un badge.
  */
 import { HardHat, Landmark, MapPin, Sun, User, type LucideIcon } from 'lucide-react';
-import { useState } from 'react';
 import {
   ageInDays,
   ageTone,
@@ -26,12 +25,7 @@ import {
   formatPhone,
   type AgeThresholds,
 } from '../lib/format';
-import {
-  categoryLabel,
-  priorityEdge,
-  quickActionFor,
-  type QuickAction,
-} from '../lib/leadActions';
+import { categoryLabel, priorityEdge } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
 import { STATUS_TONE } from '../lib/schema';
@@ -57,19 +51,12 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
 export function LeadCard({
   lead,
   onOpen,
-  onQuickAction,
-  viewerStaffId,
   thresholds = DEFAULT_AGE_THRESHOLDS,
 }: {
   lead: Lead;
   onOpen: () => void;
-  /** Exécute l'action rapide. Résout quand l'écriture est terminée. */
-  onQuickAction?: (lead: Lead, action: QuickAction) => Promise<void>;
-  /** Enregistrement RH du visiteur, pour proposer « M'assigner ». */
-  viewerStaffId?: string | null;
   thresholds?: AgeThresholds;
 }) {
-  const [busy, setBusy] = useState(false);
 
   const days = ageInDays(lead.date);
   const tone = ageTone(days, thresholds);
@@ -79,18 +66,7 @@ export function LeadCard({
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
   const edge = priorityEdge(lead);
 
-  // Règle unique, partagée avec la vue liste : voir lib/leadActions.
-  const action = quickActionFor(lead, viewerStaffId);
 
-  const run = async () => {
-    if (!action || !onQuickAction || busy) return;
-    setBusy(true);
-    try {
-      await onQuickAction(lead, action);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <article
@@ -171,7 +147,7 @@ export function LeadCard({
         )}
       </div>
 
-      {/* ---- contact et action, en pied aligné en bas ---- */}
+      {/* ---- contact, en pied aligné en bas ---- */}
       <div className="mt-auto min-w-0 border-t border-line px-4 py-2.5">
         <p className="flex min-w-0 items-center gap-1.5 text-xs">
           <StatusIcon
@@ -186,42 +162,27 @@ export function LeadCard({
           <span className="truncate text-muted">{assignee || 'Non assigné'}</span>
         </p>
 
-        <div className="mt-1.5 flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-col">
-            {/* Cibles tactiles de 44 px, obtenues par le padding vertical. */}
-            {lead.email && (
-              <a
-                href={`mailto:${lead.email}`}
-                onClick={stop}
-                className="min-w-0 truncate py-1.5 text-xs text-teal-ink hover:underline"
-              >
-                {lead.email}
-              </a>
-            )}
-            {lead.phone && (
-              <a
-                href={`tel:${lead.phone}`}
-                onClick={stop}
-                className="min-w-0 truncate py-1.5 text-xs tabular-nums text-teal-ink hover:underline"
-              >
-                {formatPhone(lead.phone)}
-              </a>
-            )}
-          </div>
-
-          {action && onQuickAction && (
-            <button
-              type="button"
-              onClick={(e) => {
-                // Sans cet arrêt, l'action ouvrirait aussi la fiche.
-                e.stopPropagation();
-                void run();
-              }}
-              disabled={busy}
-              className="shrink-0 rounded-control bg-brand px-3 py-2.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        {/* Contacts en pied : cibles tactiles de 44 px obtenues par le
+            padding vertical. Plus de bouton d'action ici — faire avancer un
+            dossier passe par la vue liste ou par la fiche. */}
+        <div className="mt-1.5 flex min-w-0 flex-col">
+          {lead.email && (
+            <a
+              href={`mailto:${lead.email}`}
+              onClick={stop}
+              className="min-w-0 truncate py-1.5 text-xs text-teal-ink hover:underline"
             >
-              {busy ? '…' : action.label}
-            </button>
+              {lead.email}
+            </a>
+          )}
+          {lead.phone && (
+            <a
+              href={`tel:${lead.phone}`}
+              onClick={stop}
+              className="min-w-0 truncate py-1.5 text-xs tabular-nums text-teal-ink hover:underline"
+            >
+              {formatPhone(lead.phone)}
+            </a>
           )}
         </div>
       </div>

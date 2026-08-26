@@ -139,7 +139,12 @@ export function SearchableSelect({
       </button>
 
       {open && (
-        <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-control border border-line bg-surface shadow-lg">
+        <div
+          // `z-40` et non `z-10` : l'en-tête collant de la vue liste est en
+          // `z-10` et, plus loin dans le DOM, il peignait par-dessus la liste
+          // déroulante — qui apparaissait coupée en deux.
+          className="absolute z-40 mt-1 w-full overflow-hidden rounded-control border border-line bg-surface shadow-lg"
+        >
           <div className="flex items-center gap-2 border-b border-line px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-muted" strokeWidth={2} aria-hidden="true" />
             <input
