@@ -18,10 +18,7 @@ import {
   AlertTriangle,
   Briefcase,
   Building2,
-  Check,
-  Copy,
   Euro,
-  Hash,
   Mail,
   MapPin,
   MessageSquare,
@@ -40,12 +37,16 @@ import {
   CONTACT,
   LEAD,
   PRIORITIES,
+  PRIORITY_TONE,
   SELECTABLE_STATUSES,
   STATUSES,
+  STATUS_TONE,
   TABLES,
   type Priority,
   type Status,
 } from '../lib/schema';
+import { TONE_CLASS } from '../lib/tones';
+import { SearchableSelect } from './SearchableSelect';
 import { Callout, PriorityBadge, RelativeDate, SecondaryButton, StatusBadge } from './ui';
 
 /** Champs d'écriture et table cible selon la source. */
@@ -85,7 +86,6 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmingReject, setConfirmingReject] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -176,16 +176,6 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
       );
     } finally {
       setSaving(false);
-    }
-  };
-
-  const copyRef = async () => {
-    try {
-      await navigator.clipboard.writeText(lead.ref);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1_500);
-    } catch {
-      setError('Copie impossible dans ce navigateur.');
     }
   };
 
@@ -296,10 +286,13 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
             <h3 className="text-sm font-semibold text-ink">Suivi commercial</h3>
 
             <div className="grid gap-4 sm:grid-cols-2">
+              {/* Les deux listes reprennent le code couleur de la valeur
+                  sélectionnée : on lit l'état du dossier sans avoir à
+                  déchiffrer le libellé. */}
               <Label text="Statut">
                 <select
                   data-autofocus
-                  className="field"
+                  className={`field font-semibold ${TONE_CLASS[STATUS_TONE[status]]}`}
                   value={status}
                   onChange={(e) => setStatus(e.target.value as Status)}
                 >
@@ -309,7 +302,7 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
                     ? SELECTABLE_STATUSES
                     : STATUSES
                   ).map((s) => (
-                    <option key={s} value={s}>
+                    <option key={s} value={s} className="bg-surface font-normal text-ink">
                       {s}
                     </option>
                   ))}
@@ -318,12 +311,12 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
 
               <Label text="Priorité">
                 <select
-                  className="field"
+                  className={`field font-semibold ${TONE_CLASS[PRIORITY_TONE[priority]]}`}
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as Priority)}
                 >
                   {PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
+                    <option key={p} value={p} className="bg-surface font-normal text-ink">
                       {p}
                     </option>
                   ))}
@@ -331,19 +324,20 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
               </Label>
 
               <Label text="Assigné à">
-                <select
-                  className="field"
+                {/* 35 collaborateurs : un select natif se parcourt à l'œil,
+                    celui-ci se filtre au clavier et trie alphabétiquement. */}
+                <SearchableSelect
+                  ariaLabel="Assigné à"
+                  emptyLabel="Non assigné"
+                  searchPlaceholder="Rechercher un collaborateur…"
                   value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                >
-                  <option value="">Non assigné</option>
-                  {activeStaff.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                      {s.group ? ` — ${s.group}` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setAssigneeId}
+                  options={activeStaff.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    hint: s.group,
+                  }))}
+                />
               </Label>
 
               <Label text="Partenaire">
@@ -364,24 +358,6 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
                 placeholder="Contexte, échanges, prochaine étape…"
               />
             </Label>
-          </section>
-
-          <section className="flex items-center gap-2 text-xs text-muted">
-            <Hash className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-            <span className="truncate font-mono">{lead.ref}</span>
-            <button
-              type="button"
-              onClick={copyRef}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-canvas hover:text-ink"
-              aria-label="Copier la référence"
-            >
-              {copied ? (
-                <Check className="h-3.5 w-3.5 text-teal-ink" strokeWidth={2} aria-hidden="true" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-              )}
-              {copied ? 'Copié' : 'Copier'}
-            </button>
           </section>
 
           {error && (

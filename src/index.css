@@ -179,24 +179,29 @@ body {
   }
 }
 
-/* Champs de formulaire : plats, arrondi de la charte, focus teal. */
-.field {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.875rem;
-}
-.field:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: var(--focus);
-}
-.field:disabled {
-  background: var(--bg);
-  color: var(--muted);
-  cursor: not-allowed;
+/* Champs de formulaire : plats, arrondi de la charte, focus teal.
+   Déclaré dans `@layer components` pour que les utilitaires Tailwind, dont la
+   couche est postérieure, puissent surcharger le fond ou la bordure — c'est
+   ce qui permet de teinter un champ selon la valeur sélectionnée. */
+@layer components {
+  .field {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.875rem;
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--teal);
+    box-shadow: var(--focus);
+  }
+  .field:disabled {
+    background: var(--bg);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
 }

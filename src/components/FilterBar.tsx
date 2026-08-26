@@ -13,6 +13,7 @@ import { FilterX } from 'lucide-react';
 import type { Stats } from '../lib/filters';
 import { ALL, countActiveFilters, type FilterState } from '../lib/filters';
 import { PRIORITIES, type Priority, type Status } from '../lib/schema';
+import { SearchableSelect } from './SearchableSelect';
 import { SecondaryButton, SearchField } from './ui';
 
 interface Options {
@@ -107,19 +108,22 @@ export function FilterBar({
           </Select>
         )}
 
-        <Select
-          label="Assigné à"
-          value={filters.assignee}
-          onChange={(v) => onChange({ assignee: v })}
-        >
-          <option value={ALL}>Tous</option>
-          <option value="unassigned">Non assigné ({stats.unassigned})</option>
-          {options.assignees.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </Select>
+        {/* Recherche et tri alphabétique : la liste peut compter 35 entrées,
+            un select natif se parcourt à l'œil. */}
+        <label className="block min-w-52">
+          <span className="mb-1.5 block text-xs font-medium text-muted">Assigné à</span>
+          <SearchableSelect
+            ariaLabel="Filtrer par collaborateur assigné"
+            emptyLabel="Tous"
+            searchPlaceholder="Rechercher…"
+            value={filters.assignee === ALL ? '' : filters.assignee}
+            onChange={(v) => onChange({ assignee: v || ALL })}
+            options={[
+              { value: 'unassigned', label: 'Non assigné', hint: String(stats.unassigned) },
+              ...options.assignees.map((a) => ({ value: a.id, label: a.name })),
+            ]}
+          />
+        </label>
 
         {options.partners.length > 0 && (
           <Select

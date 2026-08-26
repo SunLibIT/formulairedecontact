@@ -215,7 +215,14 @@ export default function App() {
           />
         </section>
 
-        <PeriodFilter filters={current} onChange={patchFilters} matching={stats.total} />
+        {/* `key` sur l'onglet : le choix « Sur mesure » est un état interne au
+            composant, il ne doit pas se propager d'un onglet à l'autre. */}
+        <PeriodFilter
+          key={tab}
+          filters={current}
+          onChange={patchFilters}
+          matching={stats.total}
+        />
 
         <FilterBar
           filters={current}

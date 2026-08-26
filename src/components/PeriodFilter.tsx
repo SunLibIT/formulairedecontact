@@ -11,7 +11,7 @@
  * période.
  */
 import { CalendarRange } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { FilterState } from '../lib/filters';
 import { SegmentedFilter } from './ui';
 
@@ -38,7 +38,8 @@ function daysAgo(n: number): string {
   return isoDay(d);
 }
 
-function rangeFor(preset: Preset): { from: string; to: string } {
+/** `custom` est exclu : il n'a pas de plage propre, il ouvre la saisie. */
+function rangeFor(preset: Exclude<Preset, 'custom'>): { from: string; to: string } {
   switch (preset) {
     case '7d':
       return { from: daysAgo(7), to: isoDay(new Date()) };
@@ -47,8 +48,6 @@ function rangeFor(preset: Preset): { from: string; to: string } {
     case '3m':
       return { from: daysAgo(90), to: isoDay(new Date()) };
     case 'all':
-      return { from: '', to: '' };
-    case 'custom':
       return { from: '', to: '' };
   }
 }
@@ -78,11 +77,20 @@ export function PeriodFilter({
   /** Nombre de demandes dans la période, pour rendre l'effet visible. */
   matching: number;
 }) {
-  const preset = useMemo(
+  // « Sur mesure » ne peut pas être déduit des dates : toute plage que l'on
+  // poserait correspondrait à un raccourci existant, et le bouton se
+  // désélectionnerait aussitôt. C'est une intention de l'utilisateur, elle
+  // demande donc son propre état.
+  const [pickedCustom, setPickedCustom] = useState(false);
+
+  const derived = useMemo(
     () => presetFor(filters.from, filters.to),
     [filters.from, filters.to],
   );
-  const active = preset !== 'all';
+  // Des bornes qui ne collent à aucun raccourci relèvent aussi du sur-mesure,
+  // même sans clic — par exemple après un rechargement.
+  const preset: Preset = pickedCustom || derived === 'custom' ? 'custom' : derived;
+  const active = Boolean(filters.from || filters.to);
 
   return (
     <section
@@ -103,12 +111,16 @@ export function PeriodFilter({
         options={PRESETS}
         value={preset}
         onChange={(next) => {
-          // « Sur mesure » n'impose rien : on garde les bornes en place pour
-          // que l'utilisateur les ajuste au lieu de repartir de zéro.
           if (next === 'custom') {
-            onChange(filters.from || filters.to ? {} : { from: daysAgo(30), to: isoDay(new Date()) });
+            setPickedCustom(true);
+            // On repart des bornes en place pour que l'utilisateur les ajuste
+            // au lieu de ressaisir tout. Sans bornes, on amorce sur 30 jours.
+            if (!filters.from && !filters.to) {
+              onChange({ from: daysAgo(30), to: isoDay(new Date()) });
+            }
             return;
           }
+          setPickedCustom(false);
           onChange(rangeFor(next));
         }}
       />

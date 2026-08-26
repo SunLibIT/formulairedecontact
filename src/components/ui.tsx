@@ -48,14 +48,16 @@ export function StatusBadge({ status }: { status: Status }) {
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
   const tone = PRIORITY_TONE[priority] ?? 'neutral';
-  // La priorité est une échelle, pas un état : on la code par un glyphe de
-  // niveau plutôt que par l'icône d'état, pour ne pas confondre les deux.
+  // La priorité est une échelle, pas un état : glyphe de niveau plutôt
+  // qu'icône d'état. Et surtout une forme différente du statut — puce sans
+  // bordure, plus petite — pour que les deux axes restent lisibles alors
+  // qu'ils partagent la palette.
   const glyph = priority === 'Haute' ? '▲' : priority === 'Basse' ? '▼' : '■';
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE_CLASS[tone]}`}
+      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${TONE_ACCENT[tone]}`}
     >
-      <span aria-hidden="true" className="text-[9px] leading-none">
+      <span aria-hidden="true" className="text-[8px] leading-none">
         {glyph}
       </span>
       {priority}

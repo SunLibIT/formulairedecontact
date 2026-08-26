@@ -157,15 +157,18 @@ export const STATUS_TONE: Record<Status, Tone> = {
 };
 
 /**
- * La priorité est un axe distinct du statut. La charte demande de ne pas
- * confondre couleur de catégorie et couleur d'urgence : puisque le statut
- * porte désormais tout le code couleur, la priorité reste neutre et ne se
- * distingue que par un glyphe de niveau — sauf « Haute », qui garde un signal
- * rouge parce que c'est une véritable urgence.
+ * Couleurs de la priorité, sur une échelle d'urgence croissante :
+ * gris → orange → rouge.
+ *
+ * La charte demande que catégorie et urgence portent des signaux distincts.
+ * Ici les deux axes partagent la palette, la distinction passe donc par la
+ * **forme** : le statut est une pastille bordée, la priorité une puce sans
+ * bordure, plus petite, préfixée d'un glyphe de niveau (▼ ■ ▲). Deux
+ * vocabulaires visuels pour deux informations différentes.
  */
 export const PRIORITY_TONE: Record<Priority, Tone> = {
   Basse: 'neutral',
-  Moyenne: 'neutral',
+  Moyenne: 'action',
   Haute: 'rejected',
 };
 
