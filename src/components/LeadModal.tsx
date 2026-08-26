@@ -30,7 +30,8 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
+import { useDialog } from '../hooks/useDialog';
 import { updateRecord } from '../lib/airtable';
 import { formatAddress, type Lead, type StaffMember } from '../lib/records';
 import {
@@ -66,8 +67,9 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
   const [confirmingReject, setConfirmingReject] = useState(false);
 
   const titleId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const restoreFocus = useRef<Element | null>(null);
+  // Piège de focus, Échap, verrou de défilement et restitution du focus :
+  // mutualisés avec la modale d'assignation.
+  const dialogRef = useDialog(onClose);
 
   const dirty =
     status !== lead.status ||
@@ -76,46 +78,6 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
     notes !== lead.notes ||
     assigneeId !== (lead.assigneeIds[0] ?? '');
 
-  /* Échap, piège de focus, restitution du focus à la fermeture. */
-  useEffect(() => {
-    restoreFocus.current = document.activeElement;
-    const node = dialogRef.current;
-    // Le focus part sur le premier contrôle d'édition, à défaut sur la boîte.
-    const firstControl = node?.querySelector<HTMLElement>('[data-autofocus]');
-    if (firstControl) firstControl.focus();
-    else node?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      if (e.key !== 'Tab' || !node) return;
-      const focusable = node.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKey);
-    const { overflow } = document.body.style;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = overflow;
-      (restoreFocus.current as HTMLElement | null)?.focus?.();
-    };
-  }, [onClose]);
 
   const activeStaff = useMemo(
     () => staff.filter((s) => s.active || lead.assigneeIds.includes(s.id)),

@@ -15,7 +15,7 @@
  */
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import {
   ageInDays,
   ageTone,
@@ -27,7 +27,7 @@ import {
 } from '../lib/format';
 import type { SortField, SortState } from '../lib/filters';
 import type { Selection } from '../hooks/useSelection';
-import { categoryLabel, priorityEdge, quickActionFor, type QuickAction } from '../lib/leadActions';
+import { categoryLabel, priorityEdge } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
 import { STATUS_TONE } from '../lib/schema';
@@ -66,8 +66,7 @@ export function LeadList({
   sort,
   onSortChange,
   onOpen,
-  onQuickAction,
-  viewerStaffId,
+  onAssign,
   thresholds = DEFAULT_AGE_THRESHOLDS,
   selection,
 }: {
@@ -75,8 +74,8 @@ export function LeadList({
   sort: SortState;
   onSortChange: (sort: SortState) => void;
   onOpen: (lead: Lead) => void;
-  onQuickAction?: (lead: Lead, action: QuickAction) => Promise<void>;
-  viewerStaffId?: string | null;
+  /** Ouvre la modale d'assignation pour cette demande. */
+  onAssign?: (lead: Lead) => void;
   thresholds?: AgeThresholds;
   selection?: Selection;
 }) {
@@ -199,8 +198,7 @@ export function LeadList({
                 <Row
                   lead={lead}
                   onOpen={onOpen}
-                  onQuickAction={onQuickAction}
-                  viewerStaffId={viewerStaffId}
+                  onAssign={onAssign}
                   thresholds={thresholds}
                   selection={selection}
                 />
@@ -216,36 +214,23 @@ export function LeadList({
 function Row({
   lead,
   onOpen,
-  onQuickAction,
-  viewerStaffId,
+  onAssign,
   thresholds,
   selection,
 }: {
   lead: Lead;
   onOpen: (lead: Lead) => void;
-  onQuickAction?: (lead: Lead, action: QuickAction) => Promise<void>;
-  viewerStaffId?: string | null;
+  onAssign?: (lead: Lead) => void;
   thresholds: AgeThresholds;
   selection?: Selection;
 }) {
-  const [busy, setBusy] = useState(false);
 
   const days = ageInDays(lead.date);
   const tone = ageTone(days, thresholds);
   const edge = priorityEdge(lead);
-  const action = quickActionFor(lead, viewerStaffId);
   const StatusIcon = TONE_ICON[STATUS_TONE[lead.status]];
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
 
-  const run = async () => {
-    if (!action || !onQuickAction || busy) return;
-    setBusy(true);
-    try {
-      await onQuickAction(lead, action);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div
@@ -347,21 +332,21 @@ function Row({
       </div>
 
       <div role="cell" className="flex justify-end">
-        {action && onQuickAction && (
+        {onAssign && (
           <button
             type="button"
             onClick={(e) => {
+              // Sans cet arrêt, le clic ouvrirait aussi la fiche complète.
               e.stopPropagation();
-              void run();
+              onAssign(lead);
             }}
-            disabled={busy}
-            aria-label={action.description}
+            aria-label={`Assigner la demande de ${formatPersonName(lead.fullName)}`}
             // Révélée au survol, mais **toujours** atteignable au clavier et
             // présente là où il n'y a pas de survol — un écran tactile
             // n'aurait jamais accès à une action masquée par `:hover`.
-            className="row-action truncate rounded-control border border-line bg-surface px-2 py-1.5 text-[11px] font-semibold text-ink hover:bg-canvas disabled:opacity-50"
+            className="row-action truncate rounded-control border border-line bg-surface px-2 py-1.5 text-[11px] font-semibold text-ink hover:bg-canvas"
           >
-            {busy ? '…' : action.label}
+            Assigner
           </button>
         )}
       </div>

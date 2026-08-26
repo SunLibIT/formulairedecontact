@@ -7,13 +7,14 @@
  * d'attente par email, tandis que le motif et l'ancienneté, qui décident de
  * l'ordre de traitement, étaient en gris tout en bas.
  *
- * Deux signaux, deux formes, pas de concurrence :
- *  - la **priorité** est un liseré de 3 px à gauche, doublé d'un texte masqué
- *    pour les lecteurs d'écran ;
- *  - l'**ancienneté** est le seul badge de la carte.
+ * Un seul badge en haut à droite, l'**ancienneté** : c'est elle qui décide de
+ * l'ordre de traitement. Statut, priorité et assigné se lisent ensemble sur
+ * une ligne de suivi en pied de carte — remonter la priorité à côté de
+ * l'ancienneté recréerait la concurrence de badges qu'on cherche à éviter.
  *
- * Le statut reste visible en ligne de métadonnée, avec son icône : il informe
- * sans revendiquer la place d'un badge.
+ * Le liseré de priorité à gauche a été essayé puis retiré : trop appuyé sur
+ * une grille de cartes, où chaque bord coloré tire l'œil. Il reste en vue
+ * liste, où les lignes sont denses et n'ont pas la place d'une pastille.
  */
 import { HardHat, Landmark, MapPin, Sun, User, type LucideIcon } from 'lucide-react';
 import {
@@ -25,11 +26,12 @@ import {
   formatPhone,
   type AgeThresholds,
 } from '../lib/format';
-import { categoryLabel, priorityEdge } from '../lib/leadActions';
+import { categoryLabel } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
 import { STATUS_TONE } from '../lib/schema';
 import { TONE_CLASS, TONE_ICON } from '../lib/tones';
+import { PriorityBadge } from './ui';
 
 /**
  * Icône de catégorie. Conservée parce qu'elle porte une information — le type
@@ -64,7 +66,6 @@ export function LeadCard({
   const CategoryIcon = CATEGORY_ICON[lead.category] ?? User;
 
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
-  const edge = priorityEdge(lead);
 
 
 
@@ -84,21 +85,7 @@ export function LeadCard({
       // hauteur et leur pied s'aligne en bas, quelle que soit la longueur du
       // message. La grille n'est pas touchée.
       className="flex h-full cursor-pointer flex-col overflow-hidden rounded-card border border-line bg-surface transition-colors hover:bg-canvas"
-      style={
-        edge
-          ? {
-              borderLeft: `3px solid ${edge}`,
-              // Le liseré doit être franc : pas d'arrondi de ce côté.
-              borderTopLeftRadius: 0,
-              borderBottomLeftRadius: 0,
-            }
-          : undefined
-      }
     >
-      {/* Le sens n'est jamais porté par la couleur seule : la priorité est
-          énoncée en texte pour les lecteurs d'écran. */}
-      <span className="sr-only">Priorité {lead.priority}.</span>
-
       <div className="min-w-0 flex-1 p-4">
         {/* ---- identité ---- */}
         <div className="flex min-w-0 items-start justify-between gap-2">
@@ -149,18 +136,25 @@ export function LeadCard({
 
       {/* ---- contact, en pied aligné en bas ---- */}
       <div className="mt-auto min-w-0 border-t border-line px-4 py-2.5">
-        <p className="flex min-w-0 items-center gap-1.5 text-xs">
-          <StatusIcon
-            className={`h-3.5 w-3.5 shrink-0 ${TONE_CLASS[STATUS_TONE[lead.status]].split(' ').find((c) => c.startsWith('text-')) ?? ''}`}
-            strokeWidth={2}
-            aria-hidden="true"
-          />
-          <span className="truncate font-medium text-ink">{lead.status}</span>
-          <span className="shrink-0 text-muted" aria-hidden="true">
-            ·
+        {/* Les trois attributs de suivi sur une seule ligne : statut,
+            priorité, assigné. La priorité n'est pas remontée en haut à droite
+            parce qu'elle y concurrencerait le badge d'ancienneté — c'est
+            justement la concurrence qu'on cherchait à supprimer. Seul le nom
+            de l'assigné se tronque, les deux signaux restent entiers. */}
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <span className="flex shrink-0 items-center gap-1.5">
+            <StatusIcon
+              className={`h-3.5 w-3.5 ${TONE_CLASS[STATUS_TONE[lead.status]].split(' ').find((c) => c.startsWith('text-')) ?? ''}`}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <span className="font-medium text-ink">{lead.status}</span>
           </span>
-          <span className="truncate text-muted">{assignee || 'Non assigné'}</span>
-        </p>
+          <PriorityBadge priority={lead.priority} />
+          <span className="min-w-0 truncate text-muted">
+            {assignee || 'Non assigné'}
+          </span>
+        </div>
 
         {/* Contacts en pied : cibles tactiles de 44 px obtenues par le
             padding vertical. Plus de bouton d'action ici — faire avancer un

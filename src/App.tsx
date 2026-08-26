@@ -17,6 +17,7 @@ import {
   UserX,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
+import { AssignModal } from './components/AssignModal';
 import { BulkActionBar, type BulkPatch } from './components/BulkActionBar';
 import { FilterBar } from './components/FilterBar';
 import { KpiPanel } from './components/KpiPanel';
@@ -54,7 +55,6 @@ import {
   type SortState,
 } from './lib/filters';
 import type { Lead } from './lib/records';
-import type { QuickAction } from './lib/leadActions';
 import { STATUS_TONE, type Status } from './lib/schema';
 import { WRITE_TARGET } from './lib/writeTargets';
 
@@ -76,7 +76,7 @@ export default function App() {
   const viewer = useViewer(staff);
   const [tab, setTab] = useState<View>('contact');
   const [selected, setSelected] = useState<Lead | null>(null);
-  const [actionError, setActionError] = useState('');
+  const [assigning, setAssigning] = useState<Lead | null>(null);
 
   // Les deux tables sont chargées d'emblée : elles totalisent moins de 800
   // enregistrements, ce qui rend les compteurs d'onglets exacts et le
@@ -143,40 +143,24 @@ export default function App() {
   };
 
   /**
-   * Exécute une action rapide depuis une carte, sans ouvrir la fiche.
+   * Écrit une assignation, depuis la modale dédiée.
    *
-   * L'écriture part vers Airtable puis la liste est corrigée en local : pas de
-   * rechargement complet pour un changement de statut sur une ligne.
+   * L'erreur remonte à l'appelant : la modale l'affiche à l'endroit où
+   * l'utilisateur agit, plutôt que dans un bandeau en haut de page qu'il ne
+   * regarde pas.
    */
-  const handleQuickAction = useCallback(
-    async (lead: Lead, action: QuickAction) => {
+  const assign = useCallback(
+    async (lead: Lead, staffId: string | null) => {
       const target = WRITE_TARGET[lead.source];
-      const fields: Record<string, unknown> = {};
-      const patch: Partial<Lead> = {};
-
-      if (action.patch.status) {
-        fields[target.status] = action.patch.status;
-        patch.status = action.patch.status;
-      }
-      if (action.patch.assigneeId !== undefined) {
-        const id = action.patch.assigneeId;
-        // Champ de liaison : tableau d'identifiants, jamais une chaîne.
-        fields[target.assignee] = id ? [id] : [];
-        patch.assigneeIds = id ? [id] : [];
-        patch.assigneeNames = id ? [byId.get(id) ?? id] : [];
-      }
-      if (!Object.keys(fields).length) return;
-
+      await updateRecord(target.tableId, lead.id, {
+        // Champ de liaison : un tableau d'identifiants, jamais une chaîne.
+        [target.assignee]: staffId ? [staffId] : [],
+      });
       const source = lead.source === 'contact' ? contact : solar;
-      try {
-        await updateRecord(target.tableId, lead.id, fields);
-        source.patchLocal(lead.id, patch);
-      } catch (e) {
-        // Une action d'un clic ne doit pas échouer en silence.
-        setActionError(
-          e instanceof Error ? e.message : "L'action n'a pas pu être enregistrée.",
-        );
-      }
+      source.patchLocal(lead.id, {
+        assigneeIds: staffId ? [staffId] : [],
+        assigneeNames: staffId ? [byId.get(staffId) ?? staffId] : [],
+      });
     },
     [byId, contact, solar],
   );
@@ -285,24 +269,6 @@ export default function App() {
           </Callout>
         )}
 
-        {/* Une action d'un clic ne doit jamais échouer en silence : la carte
-            reviendrait à son état d'origine sans explication. */}
-        {actionError && (
-          <Callout tone="danger" icon={AlertTriangle}>
-            <span className="flex flex-wrap items-center gap-2">
-              <span>
-                <strong>Action non enregistrée.</strong> {actionError}
-              </span>
-              <button
-                type="button"
-                onClick={() => setActionError('')}
-                className="ml-auto shrink-0 rounded px-2 py-1 text-xs font-semibold underline"
-              >
-                Masquer
-              </button>
-            </span>
-          </Callout>
-        )}
 
         <Tabs
           value={tab}
@@ -460,8 +426,7 @@ export default function App() {
                 sort={sort}
                 onSortChange={setSort}
                 onOpen={setSelected}
-                onQuickAction={handleQuickAction}
-                viewerStaffId={viewer.staff?.id ?? null}
+                onAssign={setAssigning}
                 selection={selection}
               />
             ) : (
@@ -502,6 +467,16 @@ export default function App() {
           />
         )}
       </main>
+
+      {assigning && (
+        <AssignModal
+          lead={assigning}
+          staff={staff.filter((m) => m.active)}
+          viewerStaffId={viewer.staff?.id ?? null}
+          onClose={() => setAssigning(null)}
+          onAssign={assign}
+        />
+      )}
 
       {selected && (
         <LeadModal
