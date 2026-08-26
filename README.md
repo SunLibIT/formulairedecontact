@@ -72,12 +72,60 @@ Variables à définir dans Settings → Environment Variables :
 | --- | --- |
 | `AIRTABLE_TOKEN` | PAT, scopes `data.records:read` + `data.records:write` |
 | `AIRTABLE_BASE_ID` | optionnel, défaut `appYjCP9BUY8Zj5Ni` |
-| `TYPEFORM_SECRET` | secret de signature du webhook |
+| `TYPEFORM_SECRET` | secret de signature du webhook, voir plus bas |
+
+Les variables ne sont injectées qu'au build : après en avoir ajouté une, il faut
+redéployer.
 
 `vercel.json` autorise l'affichage en iframe depuis Softr via
 `Content-Security-Policy: frame-ancestors`. `X-Frame-Options` n'est
 volontairement pas défini — il bloquerait l'embed. Si Softr est servi sur un
 domaine personnalisé, l'ajouter à la directive.
+
+⚠️ **Deployment Protection doit être désactivée.** Avec Vercel Authentication
+active, toute URL `.vercel.app` exige une connexion et l'iframe Softr affiche un
+écran de login au lieu de l'application. C'est le réglage des autres blocs
+in-page SunLib.
+
+## Webhook Typeform
+
+Chaque soumission est poussée vers `/api/typeform-webhook`, qui la mappe et
+l'écrit dans Airtable. Il n'y a **plus de token d'API Typeform** dans ce
+projet : l'ancienne synchronisation allait chercher les réponses, celle-ci les
+reçoit.
+
+`TYPEFORM_SECRET` n'est pas un jeton fourni par Typeform, c'est **un secret
+partagé que vous choisissez** :
+
+```bash
+openssl rand -base64 32
+```
+
+La même valeur se déclare aux deux bouts :
+
+1. Vercel → Environment Variables → `TYPEFORM_SECRET`
+2. Typeform, pour **chacun des deux formulaires** (`MtEfRiYk` et `gbPj3B1m`) →
+   Connect → Webhooks → Add a webhook
+   - Endpoint : `https://<domaine>/api/typeform-webhook`
+   - Secret : la même chaîne
+
+Typeform signe alors chaque envoi en HMAC-SHA256 du corps brut ; la fonction
+recalcule l'empreinte et compare à temps constant. Signature absente ou
+invalide → `401`, rien n'est écrit.
+
+Deux propriétés à connaître :
+
+- **Rejeu sans doublon.** L'écriture est un upsert sur `Response ID`. Typeform
+  réémet lorsqu'il ne reçoit pas de `2xx` ; une réémission met à jour la
+  demande au lieu d'en créer une seconde. La fonction répond volontairement
+  `500` en cas d'échec Airtable, pour déclencher cette reprise.
+- **Le suivi commercial n'est jamais écrasé.** `Statut` et `Priorité` ne sont
+  posés qu'à la création. Sans cette précaution, un rejeu ramènerait à
+  « Nouveau » une demande déjà qualifiée par un commercial.
+
+Si une question est modifiée dans Typeform, sa `ref` change et le champ arrive
+vide **sans erreur**. Toute retouche d'un formulaire impose de vérifier
+`api/_lib/typeform.ts`.
 
 ## Reprise des données historiques
 

@@ -49,6 +49,17 @@ export const CONTACT = {
   rawJson: 'fld5f69tU2LDEx8Ni',
 } as const;
 
+/**
+ * Noms de champs — à n'utiliser que là où l'API Airtable l'impose.
+ *
+ * `filterByFormula` est la seule surface qui n'accepte pas les identifiants :
+ * une formule référence toujours `{Nom du champ}`. Renommer ce champ dans
+ * Airtable casserait donc le filtre, contrairement à tout le reste du code.
+ */
+export const FIELD_NAMES = {
+  contactResponseId: 'Response ID',
+} as const;
+
 /** Champs de la table « Leads Solaires ». */
 export const LEAD = {
   lastName: 'fldnruhlv8yseJ6CV',
