@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Charte UI/UX SunLib — tokens repris tels quels de la référence interne
+ * « Charte UI/UX & Couleurs - IT ».
+ *
+ * Règles structurantes appliquées dans toute l'application :
+ *  - le dégradé de marque est réservé au bouton d'action principale ;
+ *  - le teal signale l'accent et l'état actif ;
+ *  - un élément actif ne porte JAMAIS de bordure ni de liseré ;
+ *  - le reste de l'interface est plat.
+ */
+:root {
+  /* Marque — dégradé réservé à l'action principale */
+  --brand-gradient: linear-gradient(90deg, #13a3ac, #3cae68);
+  --teal: #0ea3b4;
+  --teal-deep: #13a3ac;
+  --teal-ink: #0b7880;
+  --teal-soft: #e3f4f6;
+  --green: #3cae68;
+  --green-bright: #60b830;
+  --green-soft: #eaf8ef;
+
+  /* Neutres */
+  --ink: #0f1729;
+  --muted: #5b6472;
+  --line: #e6eaef;
+  --surface: #ffffff;
+  --bg: #f6f8fa;
+
+  /* Sémantiques */
+  --amber: #b45309;
+  --amber-bg: #fef3c7;
+  --amber-border: #fce8b2;
+  --red: #b91c1c;
+  --red-bg: #fef2f2;
+  --red-border: #fbd0d0;
+  --info: #1d4ed8;
+  --info-bg: #eff4ff;
+  --info-border: #cbdbff;
+
+  /* Base */
+  --radius: 14px;
+  --radius-sm: 10px;
+  --focus: 0 0 0 3px rgb(14 163 180 / 0.3);
+  --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Anneau de focus unique et toujours visible — la charte interdit de retirer
+   l'outline sans le remplacer. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: var(--radius-sm);
+}
+
+/* Micro-interaction récurrente : la flèche du bouton principal glisse au
+   survol. Amélioration progressive uniquement. */
+.btn-arrow {
+  display: inline-block;
+  transition: transform 0.5s ease;
+}
+.group:hover .btn-arrow {
+  transform: translateX(6px);
+}
+
+/* Le thumb glissant du segmented control. */
+.seg-thumb {
+  transition:
+    transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-arrow,
+  .group:hover .btn-arrow,
+  .seg-thumb {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Champs de formulaire : plats, arrondi de la charte, focus teal. */
+.field {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+}
+.field:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: var(--focus);
+}
+.field:disabled {
+  background: var(--bg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
