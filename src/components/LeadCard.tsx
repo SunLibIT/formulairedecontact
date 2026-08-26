@@ -29,9 +29,8 @@ import {
 import { categoryLabel } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
-import { STATUS_TONE } from '../lib/schema';
-import { TONE_CLASS, TONE_ICON } from '../lib/tones';
-import { PriorityBadge } from './ui';
+import { TONE_CLASS } from '../lib/tones';
+import { PriorityBadge, StatusBadge } from './ui';
 
 /**
  * Icône de catégorie. Conservée parce qu'elle porte une information — le type
@@ -62,7 +61,6 @@ export function LeadCard({
 
   const days = ageInDays(lead.date);
   const tone = ageTone(days, thresholds);
-  const StatusIcon = TONE_ICON[STATUS_TONE[lead.status]];
   const CategoryIcon = CATEGORY_ICON[lead.category] ?? User;
 
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
@@ -142,14 +140,10 @@ export function LeadCard({
             justement la concurrence qu'on cherchait à supprimer. Seul le nom
             de l'assigné se tronque, les deux signaux restent entiers. */}
         <div className="flex min-w-0 items-center gap-2 text-xs">
-          <span className="flex shrink-0 items-center gap-1.5">
-            <StatusIcon
-              className={`h-3.5 w-3.5 ${TONE_CLASS[STATUS_TONE[lead.status]].split(' ').find((c) => c.startsWith('text-')) ?? ''}`}
-              strokeWidth={2}
-              aria-hidden="true"
-            />
-            <span className="font-medium text-ink">{lead.status}</span>
-          </span>
+          {/* Pastille pleine : le statut portait sa couleur sur une icône de
+              14 px et son libellé en gris neutre, ce qui ne se voyait pas.
+              C'est le premier signal de tri visuel d'une file d'attente. */}
+          <StatusBadge status={lead.status} compact />
           <PriorityBadge priority={lead.priority} />
           <span className="min-w-0 truncate text-muted">
             {assignee || 'Non assigné'}

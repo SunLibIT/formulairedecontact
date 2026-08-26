@@ -30,8 +30,8 @@ import type { Selection } from '../hooks/useSelection';
 import { categoryLabel, priorityEdge } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
-import { STATUS_TONE } from '../lib/schema';
-import { TONE_CLASS, TONE_ICON } from '../lib/tones';
+import { TONE_CLASS } from '../lib/tones';
+import { StatusBadge } from './ui';
 
 /** Hauteur d'une ligne, en pixels. Deux lignes de texte plus le rembourrage. */
 const ROW_HEIGHT = 56;
@@ -41,7 +41,7 @@ const OVERSCAN = 8;
 
 /** Gabarit de colonnes, partagé par l'en-tête et les lignes pour qu'ils s'alignent. */
 const GRID =
-  'grid grid-cols-[1.75rem_minmax(0,2.4fr)_minmax(0,1.1fr)_minmax(0,0.8fr)_4.5rem_minmax(0,1fr)_6.5rem] items-center gap-3';
+  'grid grid-cols-[1.75rem_minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,0.8fr)_7rem_4.5rem_minmax(0,1fr)_6.5rem] items-center gap-3';
 
 interface Column {
   key: string;
@@ -56,6 +56,7 @@ const COLUMNS: Column[] = [
   { key: 'contact', label: 'Contact', sort: 'name' },
   { key: 'motive', label: 'Motif' },
   { key: 'city', label: 'Ville' },
+  { key: 'status', label: 'Statut', sort: 'status' },
   { key: 'age', label: 'Attente', sort: 'date', numeric: true },
   { key: 'assignee', label: 'Assigné', sort: 'assignee' },
   { key: 'actions', label: 'Actions' },
@@ -228,7 +229,6 @@ function Row({
   const days = ageInDays(lead.date);
   const tone = ageTone(days, thresholds);
   const edge = priorityEdge(lead);
-  const StatusIcon = TONE_ICON[STATUS_TONE[lead.status]];
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
 
 
@@ -273,15 +273,8 @@ function Row({
 
       {/* Contact — deux lignes : identité, puis moyens de contact. */}
       <div role="cell" className="min-w-0">
-        <p className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-sm font-semibold text-ink">
-            {formatPersonName(lead.fullName)}
-          </span>
-          <StatusIcon
-            className={`h-3 w-3 shrink-0 ${textOf(STATUS_TONE[lead.status])}`}
-            strokeWidth={2}
-            aria-label={lead.status}
-          />
+        <p className="min-w-0 truncate text-sm font-semibold text-ink">
+          {formatPersonName(lead.fullName)}
         </p>
         <p className="min-w-0 truncate text-xs text-muted">
           {[categoryLabel(lead), lead.company].filter(Boolean).join(' · ') || '—'}
@@ -314,6 +307,12 @@ function Row({
             {formatPhone(lead.phone)}
           </a>
         )}
+      </div>
+
+      {/* Pastille pleine plutôt qu'une icône seule : le statut est le premier
+          signal de tri visuel d'une file d'attente, il doit se voir de loin. */}
+      <div role="cell" className="min-w-0">
+        <StatusBadge status={lead.status} compact />
       </div>
 
       <div role="cell" className="text-right">
@@ -356,7 +355,3 @@ function Row({
 
 const stop = (e: React.MouseEvent) => e.stopPropagation();
 
-/** Extrait la classe de texte d'un ton, pour colorer une icône seule. */
-function textOf(tone: keyof typeof TONE_CLASS): string {
-  return TONE_CLASS[tone].split(' ').find((c) => c.startsWith('text-')) ?? '';
-}

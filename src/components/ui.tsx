@@ -41,15 +41,28 @@ import { TONE_ACCENT, TONE_CLASS, TONE_ICON } from '../lib/tones';
 // Le code couleur vit dans lib/tones.ts, jamais ici : un composant ne doit
 // pas être l'endroit où l'on va chercher une teinte.
 
-export function StatusBadge({ status }: { status: Status }) {
+export function StatusBadge({
+  status,
+  compact = false,
+}: {
+  status: Status;
+  /** Version resserrée, pour une ligne de liste dense. */
+  compact?: boolean;
+}) {
   const tone = STATUS_TONE[status] ?? 'neutral';
   const Icon = TONE_ICON[tone];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${TONE_CLASS[tone]}`}
+      className={`inline-flex max-w-full items-center gap-1 rounded-full border font-semibold ${TONE_CLASS[tone]} ${
+        compact ? 'px-1.5 py-0.5 text-[11px]' : 'gap-1.5 px-2.5 py-0.5 text-xs'
+      }`}
     >
-      <Icon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-      {status}
+      <Icon
+        className={compact ? 'h-3 w-3 shrink-0' : 'h-3.5 w-3.5 shrink-0'}
+        strokeWidth={2}
+        aria-hidden="true"
+      />
+      <span className="truncate">{status}</span>
     </span>
   );
 }
