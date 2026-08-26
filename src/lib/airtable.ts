@@ -151,6 +151,70 @@ export async function updateRecord(
   );
 }
 
+export interface BulkProgress {
+  /** Enregistrements effectivement écrits. */
+  updated: number;
+  /** Vrai si l'opération a été interrompue avant la fin. */
+  aborted: boolean;
+  /** Identifiants dont l'écriture a échoué, par lot. */
+  failed: string[];
+}
+
+/**
+ * Met à jour plusieurs enregistrements par identifiant, en respectant les
+ * limites de l'API.
+ *
+ * Airtable accepte **10 enregistrements par requête** et tolère 5 requêtes par
+ * seconde et par base. Modifier 200 lignes demande donc 20 requêtes étalées
+ * sur environ cinq secondes : c'est trop long pour un bouton qui gèlerait
+ * l'interface, d'où la progression rapportée lot par lot et la possibilité
+ * d'interrompre.
+ *
+ * Un lot qui échoue n'arrête pas les suivants : mieux vaut écrire 190 lignes
+ * sur 200 et dire lesquelles ont manqué que tout abandonner au premier refus.
+ */
+export async function updateRecords(
+  tableId: string,
+  records: Array<{ id: string; fields: Record<string, unknown> }>,
+  options: {
+    onProgress?: (done: number, total: number) => void;
+    signal?: AbortSignal;
+  } = {},
+): Promise<BulkProgress> {
+  const total = records.length;
+  let updated = 0;
+  const failed: string[] = [];
+
+  for (let i = 0; i < total; i += WRITE_BATCH) {
+    if (options.signal?.aborted) {
+      return { updated, aborted: true, failed };
+    }
+
+    const chunk = records.slice(i, i + WRITE_BATCH);
+    try {
+      await request(
+        tableId,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ records: chunk, typecast: false }),
+          signal: options.signal,
+        },
+        new URLSearchParams({ returnFieldsByFieldId: 'true' }),
+      );
+      updated += chunk.length;
+    } catch {
+      // Une interruption n'est pas un échec d'écriture : on sort proprement.
+      if (options.signal?.aborted) return { updated, aborted: true, failed };
+      failed.push(...chunk.map((r) => r.id));
+    }
+
+    options.onProgress?.(Math.min(i + WRITE_BATCH, total), total);
+    if (i + WRITE_BATCH < total) await sleep(WRITE_INTERVAL_MS);
+  }
+
+  return { updated, aborted: false, failed };
+}
+
 /**
  * Crée ou met à jour des enregistrements en une passe, par lots de 10.
  *

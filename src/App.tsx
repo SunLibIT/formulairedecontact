@@ -17,6 +17,7 @@ import {
   UserX,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
+import { BulkActionBar, type BulkPatch } from './components/BulkActionBar';
 import { FilterBar } from './components/FilterBar';
 import { KpiPanel } from './components/KpiPanel';
 import { LeadCard } from './components/LeadCard';
@@ -36,9 +37,10 @@ import {
   TopProgressBar,
 } from './components/ui';
 import { useLeads, useStaff, type LeadTable } from './hooks/useLeads';
+import { useSelection } from './hooks/useSelection';
 import { useViewPreference } from './hooks/useViewPreference';
 import { useViewer } from './hooks/useViewer';
-import { updateRecord, usesDirectToken } from './lib/airtable';
+import { updateRecord, updateRecords, usesDirectToken } from './lib/airtable';
 import {
   ALL,
   applyFilters,
@@ -126,6 +128,12 @@ export default function App() {
   // et n'ont rien à recalculer.
   const sorted = useMemo(() => sortLeads(filtered, sort), [filtered, sort]);
 
+  // Sélection tenue au-dessus des vues, sur l'ensemble **visible** : c'est ce
+  // qui la fait survivre à la bascule liste/grille, et ce qui garantit qu'une
+  // action groupée ne touche jamais une ligne hors écran.
+  const visibleIds = useMemo(() => sorted.map((l) => l.id), [sorted]);
+  const selection = useSelection(visibleIds);
+
   /** Bascule un statut depuis une tuile : re-cliquer désélectionne. */
   const toggleStatus = (status: Status) =>
     patchFilters({ status: current.status === status ? ALL : status });
@@ -171,6 +179,56 @@ export default function App() {
       }
     },
     [byId, contact, solar],
+  );
+
+  /**
+   * Applique une modification à toute la sélection.
+   *
+   * L'écriture est étalée en lots de dix par le transport ; on rapporte la
+   * progression et on corrige la liste en local à la fin, plutôt que de
+   * recharger 438 lignes pour en avoir changé vingt.
+   */
+  const applyBulk = useCallback(
+    async (
+      patch: BulkPatch,
+      handlers: { onProgress: (done: number, total: number) => void; signal: AbortSignal },
+    ) => {
+      const target = WRITE_TARGET[tab === 'solar' ? 'solar' : 'contact'];
+      const fields: Record<string, unknown> = {};
+      const localPatch: Partial<Lead> = {};
+
+      if (patch.status) {
+        fields[target.status] = patch.status;
+        localPatch.status = patch.status;
+      }
+      if (patch.priority) {
+        fields[target.priority] = patch.priority;
+        localPatch.priority = patch.priority;
+      }
+      if (patch.assigneeId !== undefined) {
+        const id = patch.assigneeId;
+        fields[target.assignee] = id ? [id] : [];
+        localPatch.assigneeIds = id ? [id] : [];
+        localPatch.assigneeNames = id ? [byId.get(id) ?? id] : [];
+      }
+
+      const ids = [...selection.ids];
+      const result = await updateRecords(
+        target.tableId,
+        ids.map((id) => ({ id, fields })),
+        handlers,
+      );
+
+      // Seules les lignes réellement écrites sont corrigées en local : afficher
+      // un changement qu'Airtable a refusé serait un mensonge.
+      const failed = new Set(result.failed);
+      for (const id of ids) {
+        if (!failed.has(id)) active.patchLocal(id, localPatch);
+      }
+
+      return { updated: result.updated, aborted: result.aborted, failed: result.failed.length };
+    },
+    [tab, byId, selection.ids, active],
   );
 
   return (
@@ -404,6 +462,7 @@ export default function App() {
                 onOpen={setSelected}
                 onQuickAction={handleQuickAction}
                 viewerStaffId={viewer.staff?.id ?? null}
+                selection={selection}
               />
             ) : (
               <>
@@ -432,6 +491,17 @@ export default function App() {
           </>
         )}
           </>
+        )}
+
+        {/* Apparaît dès qu'une ligne est sélectionnée. Hors de la vue liste
+            la sélection n'a pas d'entrée, donc la barre ne s'affiche pas. */}
+        {listView && selection.count > 0 && (
+          <BulkActionBar
+            count={selection.count}
+            staff={staff.filter((m) => m.active)}
+            onApply={applyBulk}
+            onClear={selection.clear}
+          />
         )}
       </main>
 

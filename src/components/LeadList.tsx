@@ -26,6 +26,7 @@ import {
   type AgeThresholds,
 } from '../lib/format';
 import type { SortField, SortState } from '../lib/filters';
+import type { Selection } from '../hooks/useSelection';
 import { categoryLabel, priorityEdge, quickActionFor, type QuickAction } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
@@ -40,7 +41,7 @@ const OVERSCAN = 8;
 
 /** Gabarit de colonnes, partagé par l'en-tête et les lignes pour qu'ils s'alignent. */
 const GRID =
-  'grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.1fr)_minmax(0,0.8fr)_4.5rem_minmax(0,1fr)_6.5rem] items-center gap-3';
+  'grid grid-cols-[1.75rem_minmax(0,2.4fr)_minmax(0,1.1fr)_minmax(0,0.8fr)_4.5rem_minmax(0,1fr)_6.5rem] items-center gap-3';
 
 interface Column {
   key: string;
@@ -68,6 +69,7 @@ export function LeadList({
   onQuickAction,
   viewerStaffId,
   thresholds = DEFAULT_AGE_THRESHOLDS,
+  selection,
 }: {
   leads: Lead[];
   sort: SortState;
@@ -76,6 +78,7 @@ export function LeadList({
   onQuickAction?: (lead: Lead, action: QuickAction) => Promise<void>;
   viewerStaffId?: string | null;
   thresholds?: AgeThresholds;
+  selection?: Selection;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -105,6 +108,27 @@ export function LeadList({
         role="row"
         className={`${GRID} sticky top-0 z-10 border-b border-line bg-canvas px-3 py-2`}
       >
+        {/* Case « tout / rien ». `indeterminate` n'existe pas en attribut :
+            il se pose sur l'élément, d'où la ref de rappel. */}
+        <div role="columnheader" className="flex items-center justify-center">
+          {selection && (
+            <input
+              type="checkbox"
+              checked={selection.allSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = selection.someSelected;
+              }}
+              onChange={selection.toggleAll}
+              aria-label={
+                selection.allSelected
+                  ? 'Désélectionner toutes les demandes affichées'
+                  : 'Sélectionner toutes les demandes affichées'
+              }
+              className="h-4 w-4 cursor-pointer accent-[color:var(--teal)]"
+            />
+          )}
+        </div>
+
         {COLUMNS.map((col) => {
           const active = col.sort && sort.field === col.sort;
           const Icon = !col.sort
@@ -178,6 +202,7 @@ export function LeadList({
                   onQuickAction={onQuickAction}
                   viewerStaffId={viewerStaffId}
                   thresholds={thresholds}
+                  selection={selection}
                 />
               </div>
             );
@@ -194,12 +219,14 @@ function Row({
   onQuickAction,
   viewerStaffId,
   thresholds,
+  selection,
 }: {
   lead: Lead;
   onOpen: (lead: Lead) => void;
   onQuickAction?: (lead: Lead, action: QuickAction) => Promise<void>;
   viewerStaffId?: string | null;
   thresholds: AgeThresholds;
+  selection?: Selection;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -233,11 +260,31 @@ function Row({
       }}
       aria-label={`Demande de ${formatPersonName(lead.fullName)}`}
       // `group` : les actions de fin de ligne se révèlent au survol du parent.
-      className={`${GRID} group h-full cursor-pointer border-b border-line px-3 hover:bg-canvas`}
+      className={`${GRID} group h-full cursor-pointer border-b border-line px-3 ${
+        selection?.isSelected(lead.id) ? 'bg-teal-soft' : 'hover:bg-canvas'
+      }`}
       style={edge ? { boxShadow: `inset 3px 0 0 0 ${edge}` } : undefined}
     >
       {/* Le liseré est une couleur : on double par du texte masqué. */}
       <span className="sr-only">Priorité {lead.priority}.</span>
+
+      <div role="cell" className="flex items-center justify-center">
+        {selection && (
+          <input
+            type="checkbox"
+            checked={selection.isSelected(lead.id)}
+            // `onClick` et non `onChange` : seul l'événement de clic porte
+            // `shiftKey`, dont dépend la sélection de plage.
+            onClick={(e) => {
+              e.stopPropagation();
+              selection.toggle(lead.id, e.shiftKey);
+            }}
+            onChange={() => {}}
+            aria-label={`Sélectionner la demande de ${formatPersonName(lead.fullName)}`}
+            className="h-4 w-4 cursor-pointer accent-[color:var(--teal)]"
+          />
+        )}
+      </div>
 
       {/* Contact — deux lignes : identité, puis moyens de contact. */}
       <div role="cell" className="min-w-0">
