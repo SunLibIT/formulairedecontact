@@ -9,6 +9,7 @@
  */
 import {
   AlertTriangle,
+  FilterX,
   Inbox,
   RefreshCw,
   ShieldAlert,
@@ -18,13 +19,16 @@ import {
 import { useCallback, useMemo, useState } from 'react';
 import { FilterBar } from './components/FilterBar';
 import { KpiPanel } from './components/KpiPanel';
-import { LeadCard, type QuickAction } from './components/LeadCard';
+import { LeadCard } from './components/LeadCard';
+import { LeadList } from './components/LeadList';
 import { LeadModal } from './components/LeadModal';
 import { PeriodFilter } from './components/PeriodFilter';
 import {
   Callout,
   EmptyState,
+  ErrorState,
   LeadCardSkeleton,
+  LeadRowSkeleton,
   SecondaryButton,
   StatTile,
   Tabs,
@@ -39,10 +43,14 @@ import {
   applyPeriod,
   computeStats,
   deriveOptions,
+  DEFAULT_SORT,
   EMPTY_FILTERS,
+  sortLeads,
   type FilterState,
+  type SortState,
 } from './lib/filters';
 import type { Lead } from './lib/records';
+import type { QuickAction } from './lib/leadActions';
 import { STATUS_TONE, type Status } from './lib/schema';
 import { WRITE_TARGET } from './lib/writeTargets';
 
@@ -81,6 +89,14 @@ export default function App() {
     kpi: EMPTY_FILTERS,
   });
   const [visible, setVisible] = useState(PAGE);
+  // Le tri vit au-dessus des vues : il est conservé quand on bascule.
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
+
+  // Passe (a) : la vue liste est atteignable par `?view=list`. Le sélecteur
+  // et la persistance de la préférence viennent en passe (b).
+  const listView =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('view') === 'list';
 
   const current = filters[tab];
 
@@ -105,6 +121,9 @@ export default function App() {
   );
   const options = useMemo(() => deriveOptions(active.leads), [active.leads]);
   const filtered = useMemo(() => applyFilters(active.leads, current), [active.leads, current]);
+  // Filtrage puis tri, deux étapes distinctes : les vues reçoivent le résultat
+  // et n'ont rien à recalculer.
+  const sorted = useMemo(() => sortLeads(filtered, sort), [filtered, sort]);
 
   /** Bascule un statut depuis une tuile : re-cliquer désélectionne. */
   const toggleStatus = (status: Status) =>
@@ -315,54 +334,93 @@ export default function App() {
           searchPlaceholder="Nom, email, entreprise, ville, partenaire…"
         />
 
-        {active.loading && active.leads.length === 0 ? (
-          // Squelettes plutôt qu'un spinner : la forme de la liste apparaît
-          // tout de suite et rien ne saute quand les données arrivent.
+        {/* Quatre états, déclinés par vue : chargement, erreur, aucun
+            résultat après filtrage, table vide. */}
+        {active.error && active.leads.length === 0 ? (
+          <ErrorState
+            message={active.error}
+            busy={active.loading}
+            onRetry={() => void active.refresh()}
+          />
+        ) : active.loading && active.leads.length === 0 ? (
+          // Squelettes plutôt qu'un spinner, et propres à chaque vue : la
+          // forme de ce qui arrive apparaît tout de suite et rien ne saute
+          // quand les données atterrissent.
           <>
             <p aria-live="polite" className="text-sm text-muted">
               Chargement des demandes…
             </p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }, (_, i) => (
-                <LeadCardSkeleton key={i} />
-              ))}
-            </div>
+            {listView ? (
+              <div className="overflow-hidden rounded-card border border-line bg-surface">
+                {Array.from({ length: 10 }, (_, i) => (
+                  <LeadRowSkeleton key={i} />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <LeadCardSkeleton key={i} />
+                ))}
+              </div>
+            )}
           </>
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <EmptyState
             icon={active.leads.length ? Trash2 : Inbox}
             title={active.leads.length ? 'Aucun résultat' : 'Aucune demande'}
           >
-            {active.leads.length
-              ? 'Aucune demande ne correspond aux filtres actifs.'
-              : `La table « ${TAB_LABEL[tab]} » est vide.`}
+            {active.leads.length ? (
+              <span className="flex flex-col items-center gap-3">
+                Aucune demande ne correspond aux filtres actifs.
+                <SecondaryButton icon={FilterX} onClick={resetFilters}>
+                  Réinitialiser les filtres
+                </SecondaryButton>
+              </span>
+            ) : (
+              `La table « ${TAB_LABEL[tab]} » est vide.`
+            )}
           </EmptyState>
         ) : (
           <>
             <p aria-live="polite" className="text-sm text-muted">
-              {filtered.length} demande{filtered.length > 1 ? 's' : ''}
-              {filtered.length !== active.leads.length && ` sur ${active.leads.length}`}
+              {sorted.length} demande{sorted.length > 1 ? 's' : ''}
+              {sorted.length !== active.leads.length && ` sur ${active.leads.length}`}
             </p>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {filtered.slice(0, visible).map((lead) => (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  onOpen={() => setSelected(lead)}
-                  onQuickAction={handleQuickAction}
-                  viewerStaffId={viewer.staff?.id ?? null}
-                />
-              ))}
-            </div>
+            {listView ? (
+              // La liste est virtualisée : elle affiche l'ensemble sans
+              // pagination, d'où l'absence de bouton « Voir plus ».
+              <LeadList
+                leads={sorted}
+                sort={sort}
+                onSortChange={setSort}
+                onOpen={setSelected}
+                onQuickAction={handleQuickAction}
+                viewerStaffId={viewer.staff?.id ?? null}
+              />
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {sorted.slice(0, visible).map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      onOpen={() => setSelected(lead)}
+                      onQuickAction={handleQuickAction}
+                      viewerStaffId={viewer.staff?.id ?? null}
+                    />
+                  ))}
+                </div>
 
-            {/* Divulgation progressive : on ne monte pas 438 cartes d'un coup. */}
-            {visible < filtered.length && (
-              <div className="flex justify-center">
-                <SecondaryButton onClick={() => setVisible((v) => v + PAGE)}>
-                  Voir plus ({filtered.length - visible} restantes)
-                </SecondaryButton>
-              </div>
+                {/* Divulgation progressive : on ne monte pas 438 cartes d'un coup. */}
+                {visible < sorted.length && (
+                  <div className="flex justify-center">
+                    <SecondaryButton onClick={() => setVisible((v) => v + PAGE)}>
+                      Voir plus ({sorted.length - visible} restantes)
+                    </SecondaryButton>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

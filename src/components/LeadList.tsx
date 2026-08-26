@@ -1,0 +1,330 @@
+/**
+ * Vue liste dense — purement présentationnelle.
+ *
+ * Ne détient aucun état métier : filtres, tri, pagination et sélection vivent
+ * au-dessus, dans `App`. Elle reçoit une liste déjà filtrée et triée, et
+ * remonte les intentions de l'utilisateur.
+ *
+ * Toutes les règles de comportement viennent de `lib/leadActions` et tout le
+ * formatage de `lib/format` : rien n'est réimplémenté ici, la vue cartes
+ * consomme exactement les mêmes fonctions.
+ *
+ * Virtualisée : seules les lignes visibles sont montées. À 438 demandes
+ * aujourd'hui le DOM resterait tenable, mais le tri et le filtrage
+ * re-rendraient l'ensemble à chaque frappe.
+ */
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react';
+import { useRef, useState } from 'react';
+import {
+  ageInDays,
+  ageTone,
+  DEFAULT_AGE_THRESHOLDS,
+  formatAge,
+  formatPersonName,
+  formatPhone,
+  type AgeThresholds,
+} from '../lib/format';
+import type { SortField, SortState } from '../lib/filters';
+import { categoryLabel, priorityEdge, quickActionFor, type QuickAction } from '../lib/leadActions';
+import { shortMotive } from '../lib/motives';
+import type { Lead } from '../lib/records';
+import { STATUS_TONE } from '../lib/schema';
+import { TONE_CLASS, TONE_ICON } from '../lib/tones';
+
+/** Hauteur d'une ligne, en pixels. Deux lignes de texte plus le rembourrage. */
+const ROW_HEIGHT = 56;
+
+/** Lignes montées au-delà de la zone visible, pour un défilement sans à-coups. */
+const OVERSCAN = 8;
+
+/** Gabarit de colonnes, partagé par l'en-tête et les lignes pour qu'ils s'alignent. */
+const GRID =
+  'grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.1fr)_minmax(0,0.8fr)_4.5rem_minmax(0,1fr)_6.5rem] items-center gap-3';
+
+interface Column {
+  key: string;
+  label: string;
+  /** Champ de tri, si la colonne est triable. */
+  sort?: SortField;
+  /** Alignement à droite pour les valeurs numériques, comme l'exige la charte. */
+  numeric?: boolean;
+}
+
+const COLUMNS: Column[] = [
+  { key: 'contact', label: 'Contact', sort: 'name' },
+  { key: 'motive', label: 'Motif' },
+  { key: 'city', label: 'Ville' },
+  { key: 'age', label: 'Attente', sort: 'date', numeric: true },
+  { key: 'assignee', label: 'Assigné', sort: 'assignee' },
+  { key: 'actions', label: 'Actions' },
+];
+
+export function LeadList({
+  leads,
+  sort,
+  onSortChange,
+  onOpen,
+  onQuickAction,
+  viewerStaffId,
+  thresholds = DEFAULT_AGE_THRESHOLDS,
+}: {
+  leads: Lead[];
+  sort: SortState;
+  onSortChange: (sort: SortState) => void;
+  onOpen: (lead: Lead) => void;
+  onQuickAction?: (lead: Lead, action: QuickAction) => Promise<void>;
+  viewerStaffId?: string | null;
+  thresholds?: AgeThresholds;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: leads.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: OVERSCAN,
+  });
+
+  /** Un clic sur un en-tête trié inverse le sens, sinon change de champ. */
+  const toggleSort = (field: SortField) => {
+    if (sort.field === field) {
+      onSortChange({ field, direction: sort.direction === 'asc' ? 'desc' : 'asc' });
+    } else {
+      // La date part du plus récent, un nom part de A : le défaut utile
+      // dépend du champ.
+      onSortChange({ field, direction: field === 'date' ? 'desc' : 'asc' });
+    }
+  };
+
+  return (
+    <div className="overflow-hidden rounded-card border border-line bg-surface">
+      {/* En-tête collant. `role`s explicites : la grille CSS remplace un
+          tableau, il faut redire la sémantique aux lecteurs d'écran. */}
+      <div
+        role="row"
+        className={`${GRID} sticky top-0 z-10 border-b border-line bg-canvas px-3 py-2`}
+      >
+        {COLUMNS.map((col) => {
+          const active = col.sort && sort.field === col.sort;
+          const Icon = !col.sort
+            ? null
+            : !active
+              ? ChevronsUpDown
+              : sort.direction === 'asc'
+                ? ArrowUp
+                : ArrowDown;
+
+          return (
+            <div
+              key={col.key}
+              role="columnheader"
+              aria-sort={
+                col.sort
+                  ? active
+                    ? sort.direction === 'asc'
+                      ? 'ascending'
+                      : 'descending'
+                    : 'none'
+                  : undefined
+              }
+              className={col.numeric ? 'text-right' : undefined}
+            >
+              {col.sort ? (
+                <button
+                  type="button"
+                  onClick={() => toggleSort(col.sort!)}
+                  className={`inline-flex items-center gap-1 text-xs font-semibold transition-colors ${
+                    active ? 'text-teal-ink' : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  {col.label}
+                  {Icon && <Icon className="h-3 w-3" strokeWidth={2} aria-hidden="true" />}
+                </button>
+              ) : (
+                <span className="text-xs font-semibold text-muted">{col.label}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Conteneur défilant propre : la virtualisation impose une hauteur
+          bornée. La vue cartes, elle, laisse défiler la page. */}
+      <div
+        ref={scrollRef}
+        role="rowgroup"
+        className="overflow-y-auto"
+        style={{ height: 'min(70vh, 1100px)', minHeight: 320 }}
+      >
+        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+          {virtualizer.getVirtualItems().map((item) => {
+            const lead = leads[item.index];
+            return (
+              <div
+                key={lead.id}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: item.size,
+                  transform: `translateY(${item.start}px)`,
+                }}
+              >
+                <Row
+                  lead={lead}
+                  onOpen={onOpen}
+                  onQuickAction={onQuickAction}
+                  viewerStaffId={viewerStaffId}
+                  thresholds={thresholds}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({
+  lead,
+  onOpen,
+  onQuickAction,
+  viewerStaffId,
+  thresholds,
+}: {
+  lead: Lead;
+  onOpen: (lead: Lead) => void;
+  onQuickAction?: (lead: Lead, action: QuickAction) => Promise<void>;
+  viewerStaffId?: string | null;
+  thresholds: AgeThresholds;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const days = ageInDays(lead.date);
+  const tone = ageTone(days, thresholds);
+  const edge = priorityEdge(lead);
+  const action = quickActionFor(lead, viewerStaffId);
+  const StatusIcon = TONE_ICON[STATUS_TONE[lead.status]];
+  const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
+
+  const run = async () => {
+    if (!action || !onQuickAction || busy) return;
+    setBusy(true);
+    try {
+      await onQuickAction(lead, action);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      role="row"
+      tabIndex={0}
+      onClick={() => onOpen(lead)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(lead);
+        }
+      }}
+      aria-label={`Demande de ${formatPersonName(lead.fullName)}`}
+      // `group` : les actions de fin de ligne se révèlent au survol du parent.
+      className={`${GRID} group h-full cursor-pointer border-b border-line px-3 hover:bg-canvas`}
+      style={edge ? { boxShadow: `inset 3px 0 0 0 ${edge}` } : undefined}
+    >
+      {/* Le liseré est une couleur : on double par du texte masqué. */}
+      <span className="sr-only">Priorité {lead.priority}.</span>
+
+      {/* Contact — deux lignes : identité, puis moyens de contact. */}
+      <div role="cell" className="min-w-0">
+        <p className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-sm font-semibold text-ink">
+            {formatPersonName(lead.fullName)}
+          </span>
+          <StatusIcon
+            className={`h-3 w-3 shrink-0 ${textOf(STATUS_TONE[lead.status])}`}
+            strokeWidth={2}
+            aria-label={lead.status}
+          />
+        </p>
+        <p className="min-w-0 truncate text-xs text-muted">
+          {[categoryLabel(lead), lead.company].filter(Boolean).join(' · ') || '—'}
+        </p>
+      </div>
+
+      <div role="cell" className="min-w-0">
+        <p className="truncate text-xs text-ink" title={lead.motive}>
+          {shortMotive(lead.motive) || '—'}
+        </p>
+        {lead.email && (
+          <a
+            href={`mailto:${lead.email}`}
+            onClick={stop}
+            className="block min-w-0 truncate text-xs text-teal-ink hover:underline"
+          >
+            {lead.email}
+          </a>
+        )}
+      </div>
+
+      <div role="cell" className="min-w-0">
+        <p className="truncate text-xs text-ink">{lead.address.city || '—'}</p>
+        {lead.phone && (
+          <a
+            href={`tel:${lead.phone}`}
+            onClick={stop}
+            className="block min-w-0 truncate text-xs tabular-nums text-teal-ink hover:underline"
+          >
+            {formatPhone(lead.phone)}
+          </a>
+        )}
+      </div>
+
+      <div role="cell" className="text-right">
+        <span
+          className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${TONE_CLASS[tone]}`}
+          title={`Reçue il y a ${days ?? '?'} jour(s)`}
+        >
+          {formatAge(days)}
+        </span>
+      </div>
+
+      <div role="cell" className="min-w-0">
+        <p className={`truncate text-xs ${assignee ? 'text-ink' : 'text-muted'}`}>
+          {assignee || 'Non assigné'}
+        </p>
+      </div>
+
+      <div role="cell" className="flex justify-end">
+        {action && onQuickAction && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void run();
+            }}
+            disabled={busy}
+            aria-label={action.description}
+            // Révélée au survol, mais **toujours** atteignable au clavier et
+            // présente là où il n'y a pas de survol — un écran tactile
+            // n'aurait jamais accès à une action masquée par `:hover`.
+            className="row-action truncate rounded-control border border-line bg-surface px-2 py-1.5 text-[11px] font-semibold text-ink hover:bg-canvas disabled:opacity-50"
+          >
+            {busy ? '…' : action.label}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const stop = (e: React.MouseEvent) => e.stopPropagation();
+
+/** Extrait la classe de texte d'un ton, pour colorer une icône seule. */
+function textOf(tone: keyof typeof TONE_CLASS): string {
+  return TONE_CLASS[tone].split(' ').find((c) => c.startsWith('text-')) ?? '';
+}

@@ -11,7 +11,15 @@
  *  - une famille d'icônes unique (Lucide outline), 16 px en ligne et 18 px sur
  *    les boutons.
  */
-import { ArrowRight, Loader2, Search, X, type LucideIcon } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Loader2,
+  RefreshCw,
+  Search,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   useEffect,
   useLayoutEffect,
@@ -476,6 +484,68 @@ export function LeadCardSkeleton() {
       <div className="mt-3 flex justify-between border-t border-line pt-3">
         <div className="skeleton h-3 w-24 rounded" />
         <div className="skeleton h-3 w-16 rounded" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Squelette d'une ligne de liste.
+ *
+ * Chaque vue a le sien : montrer des cartes fantômes avant d'afficher une
+ * liste, ou l'inverse, ferait sauter la mise en page au moment du rendu réel.
+ */
+export function LeadRowSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      className="flex items-center gap-3 border-b border-line px-3"
+      style={{ height: 56 }}
+    >
+      <div className="min-w-0 flex-[2.4] space-y-1.5">
+        <div className="skeleton h-3.5 w-2/5 rounded" />
+        <div className="skeleton h-3 w-1/3 rounded" />
+      </div>
+      <div className="min-w-0 flex-[1.1] space-y-1.5">
+        <div className="skeleton h-3 w-3/4 rounded" />
+        <div className="skeleton h-3 w-2/3 rounded" />
+      </div>
+      <div className="skeleton h-3 w-16 rounded" />
+      <div className="skeleton h-5 w-10 rounded-full" />
+      <div className="skeleton h-3 w-24 rounded" />
+    </div>
+  );
+}
+
+/**
+ * Échec de chargement, avec relance.
+ *
+ * Un encadré en haut de page se perd dès qu'on a défilé, et surtout il laisse
+ * une zone vide en dessous sans dire quoi faire. Ici l'erreur occupe la place
+ * du contenu et porte son bouton.
+ */
+export function ErrorState({
+  message,
+  onRetry,
+  busy = false,
+}: {
+  message: string;
+  onRetry: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <div className="rounded-card border border-danger-border bg-danger-bg p-8 text-center">
+      <AlertTriangle
+        className="mx-auto mb-3 h-8 w-8 text-danger"
+        strokeWidth={1.75}
+        aria-hidden="true"
+      />
+      <p className="font-semibold text-danger">Chargement impossible</p>
+      <p className="mx-auto mt-1 max-w-md text-sm text-danger/80">{message}</p>
+      <div className="mt-4 flex justify-center">
+        <SecondaryButton icon={RefreshCw} busy={busy} onClick={onRetry}>
+          Réessayer
+        </SecondaryButton>
       </div>
     </div>
   );

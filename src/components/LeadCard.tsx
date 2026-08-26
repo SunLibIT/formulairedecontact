@@ -26,9 +26,15 @@ import {
   formatPhone,
   type AgeThresholds,
 } from '../lib/format';
+import {
+  categoryLabel,
+  priorityEdge,
+  quickActionFor,
+  type QuickAction,
+} from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
-import { STATUS_TONE, type Status } from '../lib/schema';
+import { STATUS_TONE } from '../lib/schema';
 import { TONE_CLASS, TONE_ICON } from '../lib/tones';
 
 /**
@@ -47,27 +53,6 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
   Particulier: User,
   Entreprise: Landmark,
 };
-
-/** Libellé court du type de demandeur — « Un installateur » scanne mal. */
-const CATEGORY_LABEL: Record<string, string> = {
-  'Un installateur': 'Installateur',
-  'Un particulier': 'Particulier',
-  'Une entreprise': 'Entreprise',
-  'Une collectivité': 'Collectivité',
-  'Abonné SunLib': 'Abonné',
-};
-
-/** Liseré de priorité. « Basse » n'en porte pas : l'absence est un signal. */
-const PRIORITY_EDGE: Record<string, string> = {
-  Haute: 'var(--red)',
-  Moyenne: 'var(--amber-soft)',
-};
-
-export interface QuickAction {
-  label: string;
-  /** Champs à écrire côté Airtable. */
-  patch: { status?: Status; assigneeId?: string | null };
-}
 
 export function LeadCard({
   lead,
@@ -92,16 +77,10 @@ export function LeadCard({
   const CategoryIcon = CATEGORY_ICON[lead.category] ?? User;
 
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
-  const unassigned = !lead.assigneeIds.length && !lead.assigneeNames.length;
-  const edge = PRIORITY_EDGE[lead.priority];
+  const edge = priorityEdge(lead);
 
-  // Une seule action, celle qui fait avancer le dossier là où il en est.
-  // Pas d'action inventée sur un dossier déjà traité.
-  const action: QuickAction | null = unassigned && viewerStaffId
-    ? { label: "M'assigner", patch: { assigneeId: viewerStaffId } }
-    : lead.status === 'Nouveau'
-      ? { label: 'Marquer contacté', patch: { status: 'A contacter' } }
-      : null;
+  // Règle unique, partagée avec la vue liste : voir lib/leadActions.
+  const action = quickActionFor(lead, viewerStaffId);
 
   const run = async () => {
     if (!action || !onQuickAction || busy) return;
@@ -161,7 +140,7 @@ export function LeadCard({
         <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
           <CategoryIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
           <span className="truncate">
-            {CATEGORY_LABEL[lead.category] ?? lead.category ?? 'Type inconnu'}
+            {categoryLabel(lead) || 'Type inconnu'}
             {lead.company && ` · ${lead.company}`}
           </span>
         </p>
