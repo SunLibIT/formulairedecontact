@@ -47,6 +47,8 @@ export const CONTACT = {
   assignee: 'fldzJnDK7zuZ8eExl',
   notes: 'fldQFmXnHOw4Mk3N1',
   rawJson: 'fld5f69tU2LDEx8Ni',
+  /** Consentement coché dans le formulaire. Vide sur les reprises historiques. */
+  gdprConsent: 'flddNjogfg4QRpqeu',
 } as const;
 
 /**
@@ -126,22 +128,45 @@ export const REQUESTER_TYPES = [
 ] as const;
 
 /**
- * Ton visuel de chaque statut, selon l'échelle de la charte :
- * neutre = gris, action requise = ambre, positif = teal/vert, problème = rouge.
+ * Code couleur du suivi commercial.
+ *
+ * Défini une seule fois ici : les badges, les tuiles de statistiques et les
+ * filtres le lisent tous, donc changer une couleur se fait en une ligne et se
+ * répercute dans toute l'application.
+ *
+ * Les noms sont sémantiques et non présentationnels : si la charte évolue, on
+ * change la couleur associée à `action` sans avoir à renommer quoi que ce soit.
+ *
+ * | Ton         | Statuts                    | Couleur |
+ * |-------------|----------------------------|---------|
+ * | `fresh`     | Nouveau                    | vert    |
+ * | `action`    | A contacter, A relancer     | orange  |
+ * | `qualified` | Qualifié                   | bleu    |
+ * | `rejected`  | Hors Critères              | rouge   |
+ * | `neutral`   | Archivé, absence de valeur | gris    |
  */
-export const STATUS_TONE: Record<Status, 'neutral' | 'pending' | 'positive' | 'negative'> = {
-  Nouveau: 'neutral',
-  'A contacter': 'pending',
-  Qualifié: 'positive',
-  'A relancer': 'pending',
-  'Hors Critères': 'negative',
+export type Tone = 'neutral' | 'fresh' | 'action' | 'qualified' | 'rejected';
+
+export const STATUS_TONE: Record<Status, Tone> = {
+  Nouveau: 'fresh',
+  'A contacter': 'action',
+  Qualifié: 'qualified',
+  'A relancer': 'action',
+  'Hors Critères': 'rejected',
   Archivé: 'neutral',
 };
 
-export const PRIORITY_TONE: Record<Priority, 'neutral' | 'pending' | 'negative'> = {
+/**
+ * La priorité est un axe distinct du statut. La charte demande de ne pas
+ * confondre couleur de catégorie et couleur d'urgence : puisque le statut
+ * porte désormais tout le code couleur, la priorité reste neutre et ne se
+ * distingue que par un glyphe de niveau — sauf « Haute », qui garde un signal
+ * rouge parce que c'est une véritable urgence.
+ */
+export const PRIORITY_TONE: Record<Priority, Tone> = {
   Basse: 'neutral',
-  Moyenne: 'pending',
-  Haute: 'negative',
+  Moyenne: 'neutral',
+  Haute: 'rejected',
 };
 
 /**

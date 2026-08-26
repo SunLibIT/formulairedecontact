@@ -96,6 +96,89 @@ body {
   }
 }
 
+/* Barre de progression indéterminée : un segment qui balaie la largeur. */
+@keyframes progress-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.progress-sweep {
+  animation: progress-sweep 1.1s ease-in-out infinite;
+}
+
+/* Squelettes de chargement : pulsation discrète, jamais un scintillement. */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.skeleton {
+  background: var(--line);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-sweep {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* Ouverture de modale : le voile se fond, le panneau monte légèrement.
+   Le mouvement fait *percevoir* la superposition, là où un affichage
+   instantané laisse croire à un changement de page. */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.modal-overlay {
+  animation: overlay-in 0.18s ease-out;
+}
+.modal-panel {
+  animation: panel-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Une modale est le seul élément autorisé à porter une ombre : la charte
+   proscrit l'ombre décorative, mais ici elle est structurelle — c'est ce qui
+   détache le panneau de la page. */
+.modal-panel {
+  box-shadow:
+    0 24px 48px -12px rgb(15 23 41 / 0.35),
+    0 0 0 1px rgb(15 23 41 / 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay,
+  .modal-panel {
+    animation: none;
+  }
+}
+
 /* Champs de formulaire : plats, arrondi de la charte, focus teal. */
 .field {
   width: 100%;

@@ -11,18 +11,7 @@
  *  - une famille d'icônes unique (Lucide outline), 16 px en ligne et 18 px sur
  *    les boutons.
  */
-import {
-  AlertTriangle,
-  ArrowRight,
-  Check,
-  Circle,
-  Clock,
-  Loader2,
-  Minus,
-  Search,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowRight, Loader2, Search, X, type LucideIcon } from 'lucide-react';
 import {
   useEffect,
   useLayoutEffect,
@@ -30,25 +19,19 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { PRIORITY_TONE, STATUS_TONE, type Priority, type Status } from '../lib/schema';
+import {
+  PRIORITY_TONE,
+  STATUS_TONE,
+  type Priority,
+  type Status,
+  type Tone,
+} from '../lib/schema';
+import { TONE_ACCENT, TONE_CLASS, TONE_ICON } from '../lib/tones';
 
 /* ------------------------------------------------------------------ badges */
 
-type Tone = 'neutral' | 'pending' | 'positive' | 'negative';
-
-const TONE_CLASS: Record<Tone, string> = {
-  neutral: 'bg-canvas text-muted border-line',
-  pending: 'bg-amber-bg text-amber border-amber-border',
-  positive: 'bg-teal-soft text-teal-ink border-teal-soft',
-  negative: 'bg-danger-bg text-danger border-danger-border',
-};
-
-const TONE_ICON: Record<Tone, LucideIcon> = {
-  neutral: Circle,
-  pending: Clock,
-  positive: Check,
-  negative: AlertTriangle,
-};
+// Le code couleur vit dans lib/tones.ts, jamais ici : un composant ne doit
+// pas être l'endroit où l'on va chercher une teinte.
 
 export function StatusBadge({ status }: { status: Status }) {
   const tone = STATUS_TONE[status] ?? 'neutral';
@@ -87,6 +70,7 @@ export function StatTile({
   value,
   icon: Icon,
   hint,
+  tone = 'neutral',
   active = false,
   onClick,
 }: {
@@ -94,6 +78,8 @@ export function StatTile({
   value: number;
   icon: LucideIcon;
   hint?: string;
+  /** Reprend le code couleur du statut que la tuile compte. */
+  tone?: Tone;
   active?: boolean;
   onClick?: () => void;
 }) {
@@ -104,23 +90,21 @@ export function StatTile({
       onClick={onClick}
       disabled={!interactive}
       aria-pressed={interactive ? active : undefined}
-      className={`flex w-full items-center justify-between gap-3 rounded-card border p-4 text-left transition-colors ${
-        active
-          ? 'border-line bg-teal-soft'
-          : 'border-line bg-surface ' + (interactive ? 'hover:bg-canvas' : '')
+      // Une tuile sélectionnée s'affirme par le fond teinté de son propre ton,
+      // jamais par une bordure — la charte l'interdit explicitement.
+      className={`flex w-full items-center justify-between gap-3 rounded-card border border-line p-4 text-left transition-colors ${
+        active ? TONE_ACCENT[tone] : 'bg-surface ' + (interactive ? 'hover:bg-canvas' : '')
       } ${interactive ? 'cursor-pointer' : 'cursor-default'}`}
     >
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-muted">{label}</p>
+        <p className="truncate text-sm font-medium opacity-80">{label}</p>
         {/* Métrique « reine » : nettement plus grande que le contexte. */}
-        <p className={`text-3xl font-bold ${active ? 'text-teal-ink' : 'text-ink'}`}>
-          {value}
-        </p>
-        {hint && <p className="truncate text-xs text-muted">{hint}</p>}
+        <p className={`text-3xl font-bold ${active ? '' : 'text-ink'}`}>{value}</p>
+        {hint && <p className="truncate text-xs opacity-70">{hint}</p>}
       </div>
       <span
         className={`shrink-0 rounded-control p-2.5 ${
-          active ? 'bg-surface text-teal-ink' : 'bg-teal-soft text-teal-ink'
+          active ? 'bg-surface' : TONE_ACCENT[tone]
         }`}
       >
         <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden="true" />
@@ -279,7 +263,16 @@ export function SegmentedFilter<T extends string>({
 
 /* ------------------------------------------------------------- recherche */
 
-/** Effacement par « × » **dans** le champ, visible seulement s'il y a du texte. */
+/**
+ * Champ de recherche. Effacement par « × » **dans** le champ, visible
+ * seulement s'il y a du texte.
+ *
+ * Construit en flexbox et non en positionnement absolu : la version
+ * précédente superposait la loupe au texte, et `type="search"` ajoutait par
+ * dessus sa propre croix native selon le navigateur. Ici la loupe, le champ et
+ * la croix sont trois éléments côte à côte — ils ne peuvent pas se recouvrir,
+ * et `type="text"` supprime toute décoration native.
+ */
 export function SearchField({
   value,
   onChange,
@@ -289,27 +282,37 @@ export function SearchField({
   onChange: (v: string) => void;
   placeholder: string;
 }) {
+  const [focused, setFocused] = useState(false);
+
   return (
-    <div className="relative flex-1">
+    <div
+      className={`flex min-w-0 flex-1 items-center gap-2 rounded-control border bg-surface px-3 py-2 transition-colors ${
+        focused ? 'border-teal shadow-focus' : 'border-line'
+      }`}
+    >
       <Search
-        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+        className={`h-4 w-4 shrink-0 transition-colors ${focused ? 'text-teal-ink' : 'text-muted'}`}
         strokeWidth={2}
         aria-hidden="true"
       />
       <input
-        type="search"
+        type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="field pl-9 pr-9 [&::-webkit-search-cancel-button]:hidden"
+        // Le focus visible est porté par le conteneur : l'anneau doit
+        // entourer tout le champ, pas seulement la zone de saisie.
+        className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-ink outline-none placeholder:text-muted"
       />
       {value && (
         <button
           type="button"
           onClick={() => onChange('')}
           aria-label="Effacer la recherche"
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted hover:bg-canvas hover:text-ink"
+          className="-mr-1 shrink-0 rounded-full p-1 text-muted transition-colors hover:bg-canvas hover:text-ink"
         >
           <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
         </button>
@@ -411,6 +414,64 @@ export function Callout({
   );
 }
 
+/**
+ * Barre de progression indéterminée, fixée en haut de la fenêtre.
+ *
+ * Le seul retour visuel pendant un chargement était le spinner du bouton
+ * « Actualiser », invisible dès qu'on avait scrollé. Cette barre reste
+ * perceptible où que l'on soit dans la page, et son animation dit « ça
+ * travaille » sans prétendre connaître une progression réelle.
+ *
+ * `aria-hidden` : l'état de chargement est déjà annoncé par le `aria-live` de
+ * la liste ; le doubler ferait bavarder le lecteur d'écran pour rien.
+ */
+export function TopProgressBar({ active }: { active: boolean }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden transition-opacity duration-200 ${
+        active ? 'opacity-100' : 'pointer-events-none opacity-0'
+      }`}
+    >
+      {active && <div className="progress-sweep h-full w-1/3 bg-brand" />}
+    </div>
+  );
+}
+
+/**
+ * Cartes squelettes du premier chargement.
+ *
+ * Préférées à un spinner centré : elles montrent la forme de ce qui arrive,
+ * donc l'attente paraît plus courte et la mise en page ne saute pas quand les
+ * données s'affichent.
+ */
+export function LeadCardSkeleton() {
+  return (
+    <div aria-hidden="true" className="rounded-card border border-line bg-surface p-4">
+      <div className="flex items-start gap-3">
+        <div className="skeleton h-9 w-9 shrink-0 rounded-full" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="skeleton h-4 w-2/3 rounded" />
+          <div className="skeleton h-3 w-1/2 rounded" />
+        </div>
+        <div className="space-y-1.5">
+          <div className="skeleton h-5 w-20 rounded-full" />
+          <div className="skeleton h-5 w-16 rounded-full" />
+        </div>
+      </div>
+      <div className="mt-3 space-y-2">
+        <div className="skeleton h-3 w-4/5 rounded" />
+        <div className="skeleton h-3 w-3/5 rounded" />
+        <div className="skeleton h-3 w-2/3 rounded" />
+      </div>
+      <div className="mt-3 flex justify-between border-t border-line pt-3">
+        <div className="skeleton h-3 w-24 rounded" />
+        <div className="skeleton h-3 w-16 rounded" />
+      </div>
+    </div>
+  );
+}
+
 export function EmptyState({
   icon: Icon,
   title,
@@ -485,5 +546,3 @@ export function RelativeDate({ iso }: { iso: string }) {
 
   return <time dateTime={iso} title={absolute}>{label}</time>;
 }
-
-export { Minus };

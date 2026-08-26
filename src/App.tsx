@@ -12,7 +12,6 @@ import {
   Bell,
   CheckCircle,
   Inbox,
-  Loader2,
   RefreshCw,
   ShieldAlert,
   Trash2,
@@ -22,7 +21,16 @@ import { useCallback, useMemo, useState } from 'react';
 import { FilterBar } from './components/FilterBar';
 import { LeadCard } from './components/LeadCard';
 import { LeadModal } from './components/LeadModal';
-import { Callout, EmptyState, SecondaryButton, StatTile, Tabs } from './components/ui';
+import { PeriodFilter } from './components/PeriodFilter';
+import {
+  Callout,
+  EmptyState,
+  LeadCardSkeleton,
+  SecondaryButton,
+  StatTile,
+  Tabs,
+  TopProgressBar,
+} from './components/ui';
 import { useLeads, useStaff, type LeadTable } from './hooks/useLeads';
 import { usesDirectToken } from './lib/airtable';
 import {
@@ -35,7 +43,7 @@ import {
   type FilterState,
 } from './lib/filters';
 import type { Lead } from './lib/records';
-import type { Status } from './lib/schema';
+import { STATUS_TONE, type Status } from './lib/schema';
 
 /** Nombre de cartes rendues d'un coup — le reste à la demande. */
 const PAGE = 60;
@@ -97,6 +105,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-canvas">
+      {/* Visible où que l'on soit dans la page, contrairement au spinner du
+          bouton « Actualiser ». Couvre les deux tables : basculer d'onglet
+          pendant un chargement doit rester lisible. */}
+      <TopProgressBar active={contact.loading || solar.loading} />
+
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-5">
           <div>
@@ -160,10 +173,14 @@ export default function App() {
           aria-label="Répartition par statut"
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
         >
+          {/* Chaque tuile porte le ton de son statut, pris dans STATUS_TONE :
+              le code couleur du dashboard et celui des badges ne peuvent pas
+              diverger. */}
           <StatTile
             label="Nouveau"
             value={stats.byStatus.Nouveau}
             icon={Inbox}
+            tone={STATUS_TONE.Nouveau}
             active={current.status === 'Nouveau'}
             onClick={() => toggleStatus('Nouveau')}
           />
@@ -171,6 +188,7 @@ export default function App() {
             label="À contacter"
             value={stats.byStatus['A contacter']}
             icon={Bell}
+            tone={STATUS_TONE['A contacter']}
             active={current.status === 'A contacter'}
             onClick={() => toggleStatus('A contacter')}
           />
@@ -178,6 +196,7 @@ export default function App() {
             label="Qualifié"
             value={stats.byStatus.Qualifié}
             icon={CheckCircle}
+            tone={STATUS_TONE.Qualifié}
             active={current.status === 'Qualifié'}
             onClick={() => toggleStatus('Qualifié')}
           />
@@ -186,6 +205,7 @@ export default function App() {
             value={stats.unassigned}
             icon={UserX}
             hint={`sur ${stats.total} sur la période`}
+            tone="neutral"
             active={current.assignee === 'unassigned'}
             onClick={() =>
               patchFilters({
@@ -194,6 +214,8 @@ export default function App() {
             }
           />
         </section>
+
+        <PeriodFilter filters={current} onChange={patchFilters} matching={stats.total} />
 
         <FilterBar
           filters={current}
@@ -205,10 +227,18 @@ export default function App() {
         />
 
         {active.loading && active.leads.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 rounded-card border border-line bg-surface p-12 text-muted">
-            <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden="true" />
-            Chargement des demandes…
-          </div>
+          // Squelettes plutôt qu'un spinner : la forme de la liste apparaît
+          // tout de suite et rien ne saute quand les données arrivent.
+          <>
+            <p aria-live="polite" className="text-sm text-muted">
+              Chargement des demandes…
+            </p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }, (_, i) => (
+                <LeadCardSkeleton key={i} />
+              ))}
+            </div>
+          </>
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={active.leads.length ? Trash2 : Inbox}

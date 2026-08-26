@@ -193,7 +193,11 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-4"
+      // Trois signaux de profondeur cumulés : un voile assez dense pour que
+      // le fond cesse d'être lisible, un flou qui le repousse, et l'ombre
+      // portée du panneau. Le voile à 40 % sans flou laissait une surface
+      // blanche sur un fond quasi blanc, impossible à distinguer.
+      className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -204,10 +208,12 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-card bg-surface sm:rounded-card"
+        className="modal-panel flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-card bg-surface sm:rounded-card"
       >
         {/* ---- en-tête fixe ---- */}
-        <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+        {/* Fond légèrement teinté : donne une structure interne au panneau et
+            marque la limite de la zone défilante. */}
+        <header className="flex items-start justify-between gap-3 border-b border-line bg-canvas px-5 py-4">
           <div className="min-w-0">
             <h2 id={titleId} className="truncate text-lg font-bold text-ink">
               {lead.fullName}
@@ -386,7 +392,7 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
         </div>
 
         {/* ---- pied fixe ---- */}
-        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3">
+        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-canvas px-5 py-3">
           {/* Action destructrice : jamais en accès direct. */}
           {confirmingReject ? (
             <div className="flex items-center gap-2">

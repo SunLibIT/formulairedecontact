@@ -9,7 +9,7 @@
  * Charte : réinitialisation par un bouton séparé et explicite, désactivé tant
  * qu'aucun filtre n'est actif ; période active signalée en teal.
  */
-import { CalendarRange, FilterX } from 'lucide-react';
+import { FilterX } from 'lucide-react';
 import type { Stats } from '../lib/filters';
 import { ALL, countActiveFilters, type FilterState } from '../lib/filters';
 import { PRIORITIES, type Priority, type Status } from '../lib/schema';
@@ -37,7 +37,6 @@ export function FilterBar({
   searchPlaceholder: string;
 }) {
   const activeCount = countActiveFilters(filters);
-  const periodActive = Boolean(filters.from || filters.to);
 
   // Un statut sans aucun enregistrement est inutile à proposer.
   const statuses = (Object.entries(stats.byStatus) as Array<[Status, number]>)
@@ -137,35 +136,6 @@ export function FilterBar({
           </Select>
         )}
 
-        <div className="flex items-end gap-2">
-          <label className="block">
-            <span
-              className={`mb-1.5 flex items-center gap-1.5 text-xs font-medium ${
-                periodActive ? 'text-teal-ink' : 'text-muted'
-              }`}
-            >
-              <CalendarRange className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-              Du
-            </span>
-            <input
-              type="date"
-              className="field w-auto"
-              value={filters.from}
-              max={filters.to || undefined}
-              onChange={(e) => onChange({ from: e.target.value })}
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">au</span>
-            <input
-              type="date"
-              className="field w-auto"
-              value={filters.to}
-              min={filters.from || undefined}
-              onChange={(e) => onChange({ to: e.target.value })}
-            />
-          </label>
-        </div>
       </div>
     </div>
   );

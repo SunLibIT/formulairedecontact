@@ -25,6 +25,7 @@ import {
   departmentFrom,
   FIELD_REFS,
   findAnswer,
+  normaliseCountry,
   normalisePhone,
   TYPEFORM_FORMS,
   type TypeformAnswer,
@@ -162,7 +163,12 @@ export async function POST(req: Request): Promise<Response> {
     [CONTACT.postalCode]: postalCode,
     [CONTACT.department]: departmentFrom(postalCode),
     [CONTACT.region]: findAnswer(answers, FIELD_REFS.region),
-    [CONTACT.country]: findAnswer(answers, FIELD_REFS.country),
+    // `FR` côté Typeform, `France` dans les 438 enregistrements repris :
+    // sans normalisation, tout regroupement par pays se scinderait en deux.
+    [CONTACT.country]: normaliseCountry(findAnswer(answers, FIELD_REFS.country)),
+    // Une case à cocher arrive comme un `choice` porteur d'un libellé, jamais
+    // comme un booléen : la présence d'une réponse vaut consentement.
+    [CONTACT.gdprConsent]: findAnswer(answers, FIELD_REFS.gdprConsent).length > 0,
     // Filet de sécurité : la charge utile brute permet de re-mapper un champ
     // plus tard sans redemander quoi que ce soit à Typeform.
     [CONTACT.rawJson]: rawBody.slice(0, 95_000),

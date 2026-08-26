@@ -87,6 +87,12 @@ export const FIELD_REFS = {
     '1149f77c-068b-4471-9aa8-6cb1fc994685',
     'a44d760d-3ec4-4dd0-802b-93b196a4bc6d',
   ],
+  /**
+   * Case de consentement RGPD : « j'accepte que SunLib utilise mes
+   * coordonnées pour traiter ma demande ». Absente de l'ancienne
+   * synchronisation Supabase, donc vide sur les enregistrements repris.
+   */
+  gdprConsent: ['0253fc54-c09a-4e71-a48e-17839c66a1fb'],
 } as const;
 
 export interface TypeformAnswer {
@@ -147,6 +153,18 @@ export function defaultPriority(requesterType: string): 'Basse' | 'Moyenne' | 'H
   if (t.includes('entreprise')) return 'Moyenne';
   if (t.includes('particulier')) return 'Basse';
   return 'Moyenne';
+}
+
+/**
+ * Aligne le pays sur la forme utilisée par les données reprises.
+ *
+ * Typeform renvoie `FR`, les 438 enregistrements historiques portent
+ * `France`. Sans cette normalisation, un filtre par pays produirait deux
+ * groupes distincts pour le même pays.
+ */
+export function normaliseCountry(raw: string): string {
+  const c = raw.trim();
+  return ['FR', 'FRA', 'FRANCE'].includes(c.toUpperCase()) ? 'France' : c;
 }
 
 /** Normalise un téléphone en E.164 pour la France. */

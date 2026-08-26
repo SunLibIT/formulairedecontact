@@ -1,0 +1,47 @@
+/**
+ * Traduction du code couleur en classes et en icônes.
+ *
+ * Le code couleur lui-même — quel statut porte quel ton — est défini dans
+ * `schema.ts` (`STATUS_TONE`). Ce fichier ne fait que le rendre. Pour changer
+ * une couleur, un seul endroit à toucher ; le changement se répercute sur les
+ * badges, les tuiles de statistiques et les filtres, sans exception possible.
+ *
+ * Chaque ton porte une **icône distincte** : la charte SunLib interdit que le
+ * sens repose sur la couleur seule.
+ *
+ * | Ton         | Couleur | Icône           |
+ * |-------------|---------|-----------------|
+ * | `fresh`     | vert    | étincelle       |
+ * | `action`    | orange  | horloge         |
+ * | `qualified` | bleu    | coche           |
+ * | `rejected`  | rouge   | triangle d'alerte |
+ * | `neutral`   | gris    | cercle          |
+ */
+import { AlertTriangle, Check, Circle, Clock, Sparkle, type LucideIcon } from 'lucide-react';
+import type { Tone } from './schema';
+
+/** Pastille complète : fond, texte et bordure. */
+export const TONE_CLASS: Record<Tone, string> = {
+  neutral: 'bg-canvas text-muted border-line',
+  fresh: 'bg-brand-soft text-[color:var(--green)] border-brand-soft',
+  action: 'bg-amber-bg text-amber border-amber-border',
+  qualified: 'bg-info-bg text-info border-info-border',
+  rejected: 'bg-danger-bg text-danger border-danger-border',
+};
+
+/** Fond et texte seuls, sans bordure — pour les pastilles d'icône. */
+export const TONE_ACCENT: Record<Tone, string> = {
+  neutral: 'bg-canvas text-muted',
+  fresh: 'bg-brand-soft text-[color:var(--green)]',
+  action: 'bg-amber-bg text-amber',
+  qualified: 'bg-info-bg text-info',
+  rejected: 'bg-danger-bg text-danger',
+};
+
+export const TONE_ICON: Record<Tone, LucideIcon> = {
+  neutral: Circle,
+  fresh: Sparkle,
+  action: Clock,
+  qualified: Check,
+  rejected: AlertTriangle,
+};
