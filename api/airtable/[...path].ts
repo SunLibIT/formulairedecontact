@@ -3,13 +3,15 @@
  *
  * Raison d'être : le token Airtable ne doit jamais être compilé dans le bundle
  * navigateur. Toute variable préfixée `VITE_` l'est par construction, donc
- * n'importe quel visiteur du site pouvait jusqu'ici extraire un token en
- * lecture/écriture sur la base entière. Ici, le token reste côté serveur.
+ * n'importe quel visiteur du site pourrait extraire un token en lecture et en
+ * écriture sur la base entière. Ici, le token reste côté serveur.
  *
  * Le proxy est volontairement étroit :
  *  - seules les tables de cette application sont joignables ;
- *  - seules les méthodes GET et PATCH sont acceptées (aucune suppression) ;
- *  - la requête est reconstruite champ par champ, jamais relayée telle quelle.
+ *  - seuls GET et PATCH existent, et c'est le routeur qui l'impose : toute
+ *    autre méthode reçoit un 405 sans que la fonction soit même invoquée ;
+ *  - la requête est reconstruite paramètre par paramètre, jamais relayée
+ *    telle quelle.
  *
  * Variables d'environnement (Vercel → Settings → Environment Variables) :
  *   AIRTABLE_TOKEN   Personal Access Token, scopes data.records:read + :write
@@ -17,7 +19,6 @@
  */
 
 const BASE_ID = process.env.AIRTABLE_BASE_ID ?? 'appYjCP9BUY8Zj5Ni';
-const TOKEN = process.env.AIRTABLE_TOKEN;
 
 /** Tables que ce proxy accepte de servir. Toute autre table est refusée. */
 const ALLOWED_TABLES = new Set([
@@ -48,21 +49,21 @@ const json = (body: unknown, status: number) =>
     },
   });
 
-export default async function handler(req: Request): Promise<Response> {
-  if (!TOKEN) {
+async function proxy(req: Request): Promise<Response> {
+  const token = process.env.AIRTABLE_TOKEN;
+  if (!token) {
     return json(
       { error: { message: 'AIRTABLE_TOKEN absent de la configuration serveur.' } },
       500,
     );
   }
 
-  if (req.method !== 'GET' && req.method !== 'PATCH') {
-    return json({ error: { message: `Méthode ${req.method} non autorisée.` } }, 405);
-  }
-
   const url = new URL(req.url);
   // Chemin attendu : /api/airtable/<tableId>[/<recordId>]
-  const segments = url.pathname.replace(/^\/api\/airtable\/?/, '').split('/').filter(Boolean);
+  const segments = url.pathname
+    .replace(/^\/api\/airtable\/?/, '')
+    .split('/')
+    .filter(Boolean);
   const [tableId, recordId] = segments;
 
   if (!tableId || !ALLOWED_TABLES.has(tableId)) {
@@ -86,7 +87,7 @@ export default async function handler(req: Request): Promise<Response> {
   const init: RequestInit = {
     method: req.method,
     headers: {
-      Authorization: `Bearer ${TOKEN}`,
+      Authorization: `Bearer ${token}`,
       ...(req.method === 'PATCH' ? { 'Content-Type': 'application/json' } : {}),
     },
   };
@@ -121,4 +122,15 @@ export default async function handler(req: Request): Promise<Response> {
       502,
     );
   }
+}
+
+// Exports nommés par méthode HTTP : c'est la signature attendue par le
+// runtime Vercel. Un `export default (req) => Response` voit sa valeur de
+// retour ignorée et la fonction ne répond jamais.
+export function GET(req: Request): Promise<Response> {
+  return proxy(req);
+}
+
+export function PATCH(req: Request): Promise<Response> {
+  return proxy(req);
 }

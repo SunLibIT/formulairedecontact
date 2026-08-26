@@ -16,7 +16,10 @@
  *   TYPEFORM_SECRET   secret de signature du webhook
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { upsert } from './_lib/airtable';
+// Les extensions `.js` sont obligatoires : Vercel compile en ESM, et Node en
+// ESM n'applique pas la résolution implicite des extensions. TypeScript sait
+// que `./x.js` désigne `./x.ts`.
+import { upsert } from './_lib/airtable.js';
 import {
   defaultPriority,
   departmentFrom,
@@ -25,10 +28,10 @@ import {
   normalisePhone,
   TYPEFORM_FORMS,
   type TypeformAnswer,
-} from './_lib/typeform';
+} from './_lib/typeform.js';
 // Les identifiants de champs viennent du schéma partagé : une seule
 // définition pour le front et pour le webhook.
-import { CONTACT, FIELD_NAMES, TABLES } from '../src/lib/schema';
+import { CONTACT, FIELD_NAMES, TABLES } from '../src/lib/schema.js';
 
 interface WebhookPayload {
   event_id?: string;
@@ -72,11 +75,13 @@ function signatureValid(rawBody: string, header: string | null, secret: string):
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') {
-    return json({ error: `Méthode ${req.method} non autorisée.` }, 405);
-  }
-
+/**
+ * Export nommé par méthode HTTP : c'est la signature attendue par le runtime
+ * Vercel. Un `export default (req) => Response` voit sa valeur de retour
+ * ignorée et la fonction ne répond jamais. Le routeur refuse lui-même toute
+ * méthode autre que POST.
+ */
+export async function POST(req: Request): Promise<Response> {
   const secret = process.env.TYPEFORM_SECRET;
   if (!secret) {
     return json({ error: 'TYPEFORM_SECRET absent de la configuration serveur.' }, 500);
