@@ -137,21 +137,36 @@ export const REQUESTER_TYPES = [
  * Les noms sont sémantiques et non présentationnels : si la charte évolue, on
  * change la couleur associée à `action` sans avoir à renommer quoi que ce soit.
  *
- * | Ton         | Statuts                    | Couleur |
- * |-------------|----------------------------|---------|
- * | `fresh`     | Nouveau                    | vert    |
- * | `action`    | A contacter, A relancer     | orange  |
- * | `qualified` | Qualifié                   | bleu    |
- * | `rejected`  | Hors Critères              | rouge   |
- * | `neutral`   | Archivé, absence de valeur | gris    |
+ * | Ton         | Statuts                    | Couleur        |
+ * |-------------|----------------------------|----------------|
+ * | `fresh`     | Nouveau                    | vert           |
+ * | `action`    | A contacter                | ambre clair    |
+ * | `followup`  | A relancer                 | ambre foncé    |
+ * | `qualified` | Qualifié                   | bleu           |
+ * | `rejected`  | Hors Critères              | rouge          |
+ * | `neutral`   | Archivé, absence de valeur | gris           |
+ *
+ * « A contacter » et « A relancer » partagent la teinte ambre à deux pas
+ * différents, et non deux teintes distinctes : le second est une reprise du
+ * premier, donc une **progression**. Une rampe d'une seule teinte fait voir
+ * cet ordre dans la couleur, là où deux teintes suggéreraient deux catégories
+ * sans rapport. Les deux pas portent en plus une icône différente — horloge
+ * puis flèche de reprise — pour que la distinction ne dépende pas de la
+ * perception d'une nuance.
  */
-export type Tone = 'neutral' | 'fresh' | 'action' | 'qualified' | 'rejected';
+export type Tone =
+  | 'neutral'
+  | 'fresh'
+  | 'action'
+  | 'followup'
+  | 'qualified'
+  | 'rejected';
 
 export const STATUS_TONE: Record<Status, Tone> = {
   Nouveau: 'fresh',
   'A contacter': 'action',
   Qualifié: 'qualified',
-  'A relancer': 'action',
+  'A relancer': 'followup',
   'Hors Critères': 'rejected',
   Archivé: 'neutral',
 };

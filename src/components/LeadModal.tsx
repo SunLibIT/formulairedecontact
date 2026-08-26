@@ -34,40 +34,18 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { updateRecord } from '../lib/airtable';
 import { formatAddress, type Lead, type StaffMember } from '../lib/records';
 import {
-  CONTACT,
-  LEAD,
   PRIORITIES,
   PRIORITY_TONE,
   SELECTABLE_STATUSES,
   STATUSES,
   STATUS_TONE,
-  TABLES,
   type Priority,
   type Status,
 } from '../lib/schema';
 import { TONE_CLASS } from '../lib/tones';
+import { WRITE_TARGET } from '../lib/writeTargets';
 import { SearchableSelect } from './SearchableSelect';
 import { Callout, PriorityBadge, RelativeDate, SecondaryButton, StatusBadge } from './ui';
-
-/** Champs d'écriture et table cible selon la source. */
-const TARGET = {
-  contact: {
-    tableId: TABLES.contactRequests,
-    status: CONTACT.status,
-    priority: CONTACT.priority,
-    partner: CONTACT.partner,
-    assignee: CONTACT.assignee,
-    notes: CONTACT.notes,
-  },
-  solar: {
-    tableId: TABLES.solarLeads,
-    status: LEAD.status,
-    priority: LEAD.priority,
-    partner: LEAD.partner,
-    assignee: LEAD.assignee,
-    notes: LEAD.notes,
-  },
-} as const;
 
 interface Props {
   lead: Lead;
@@ -148,7 +126,7 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
     const nextStatus = overrides.status ?? status;
     setSaving(true);
     setError('');
-    const t = TARGET[lead.source];
+    const t = WRITE_TARGET[lead.source];
     try {
       await updateRecord(t.tableId, lead.id, {
         [t.status]: nextStatus,
@@ -323,31 +301,37 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
                 </select>
               </Label>
 
-              <Label text="Assigné à">
-                {/* 35 collaborateurs : un select natif se parcourt à l'œil,
-                    celui-ci se filtre au clavier et trie alphabétiquement. */}
-                <SearchableSelect
-                  ariaLabel="Assigné à"
-                  emptyLabel="Non assigné"
-                  searchPlaceholder="Rechercher un collaborateur…"
-                  value={assigneeId}
-                  onChange={setAssigneeId}
-                  options={activeStaff.map((s) => ({
-                    value: s.id,
-                    label: s.name,
-                    hint: s.group,
-                  }))}
-                />
-              </Label>
+              {/* Pleine largeur : la liste déroulante doit avoir la place
+                  d'afficher un nom complet et son service sans troncature. */}
+              <div className="sm:col-span-2">
+                <Label text="Assigné à">
+                  {/* 35 collaborateurs : un select natif se parcourt à l'œil,
+                      celui-ci se filtre au clavier et trie alphabétiquement. */}
+                  <SearchableSelect
+                    ariaLabel="Assigné à"
+                    emptyLabel="Non assigné"
+                    searchPlaceholder="Rechercher un collaborateur…"
+                    value={assigneeId}
+                    onChange={setAssigneeId}
+                    options={activeStaff.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                      hint: s.group,
+                    }))}
+                  />
+                </Label>
+              </div>
 
-              <Label text="Partenaire">
-                <input
-                  className="field"
-                  value={partner}
-                  onChange={(e) => setPartner(e.target.value)}
-                  placeholder="Aucun"
-                />
-              </Label>
+              <div className="sm:col-span-2">
+                <Label text="Partenaire">
+                  <input
+                    className="field"
+                    value={partner}
+                    onChange={(e) => setPartner(e.target.value)}
+                    placeholder="Aucun"
+                  />
+                </Label>
+              </div>
             </div>
 
             <Label text="Notes">

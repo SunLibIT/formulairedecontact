@@ -27,7 +27,8 @@ const NOMINAL_FILL = 'var(--teal)';
 const TONE_FILL: Record<Tone, string> = {
   neutral: 'var(--muted)',
   fresh: 'var(--green)',
-  action: 'var(--amber)',
+  action: 'var(--amber-soft)',
+  followup: 'var(--amber)',
   qualified: 'var(--info)',
   rejected: 'var(--red)',
 };

@@ -9,22 +9,32 @@
  * Chaque ton porte une **icône distincte** : la charte SunLib interdit que le
  * sens repose sur la couleur seule.
  *
- * | Ton         | Couleur | Icône           |
- * |-------------|---------|-----------------|
- * | `fresh`     | vert    | étincelle       |
- * | `action`    | orange  | horloge         |
- * | `qualified` | bleu    | coche           |
- * | `rejected`  | rouge   | triangle d'alerte |
- * | `neutral`   | gris    | cercle          |
+ * | Ton         | Couleur      | Icône             |
+ * |-------------|--------------|-------------------|
+ * | `fresh`     | vert         | étincelle         |
+ * | `action`    | ambre clair  | horloge           |
+ * | `followup`  | ambre foncé  | flèche de reprise |
+ * | `qualified` | bleu         | coche             |
+ * | `rejected`  | rouge        | triangle d'alerte |
+ * | `neutral`   | gris         | cercle            |
  */
-import { AlertTriangle, Check, Circle, Clock, Sparkle, type LucideIcon } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  Circle,
+  Clock,
+  RotateCcw,
+  Sparkle,
+  type LucideIcon,
+} from 'lucide-react';
 import type { Tone } from './schema';
 
 /** Pastille complète : fond, texte et bordure. */
 export const TONE_CLASS: Record<Tone, string> = {
   neutral: 'bg-canvas text-muted border-line',
   fresh: 'bg-brand-soft text-[color:var(--green)] border-brand-soft',
-  action: 'bg-amber-bg text-amber border-amber-border',
+  action: 'bg-amber-soft-bg text-amber-soft border-amber-soft-border',
+  followup: 'bg-amber-bg text-amber border-amber-border',
   qualified: 'bg-info-bg text-info border-info-border',
   rejected: 'bg-danger-bg text-danger border-danger-border',
 };
@@ -33,7 +43,8 @@ export const TONE_CLASS: Record<Tone, string> = {
 export const TONE_ACCENT: Record<Tone, string> = {
   neutral: 'bg-canvas text-muted',
   fresh: 'bg-brand-soft text-[color:var(--green)]',
-  action: 'bg-amber-bg text-amber',
+  action: 'bg-amber-soft-bg text-amber-soft',
+  followup: 'bg-amber-bg text-amber',
   qualified: 'bg-info-bg text-info',
   rejected: 'bg-danger-bg text-danger',
 };
@@ -42,6 +53,7 @@ export const TONE_ICON: Record<Tone, LucideIcon> = {
   neutral: Circle,
   fresh: Sparkle,
   action: Clock,
+  followup: RotateCcw,
   qualified: Check,
   rejected: AlertTriangle,
 };

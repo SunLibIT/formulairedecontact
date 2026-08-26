@@ -34,6 +34,16 @@
   --amber: #b45309;
   --amber-bg: #fef3c7;
   --amber-border: #fce8b2;
+
+  /* Second pas, plus clair, de la même teinte ambre.
+     « À contacter » puis « À relancer » est une progression : une rampe
+     d'une seule teinte fait voir l'ordre dans la couleur, là où deux teintes
+     distinctes suggéreraient deux catégories sans rapport.
+     Validé en rampe ordinale : lightness monotone, écart suffisant,
+     extrémité claire à 3,10:1 sur le fond. */
+  --amber-soft: #d97706;
+  --amber-soft-bg: #fffbeb;
+  --amber-soft-border: #fde68a;
   --red: #b91c1c;
   --red-bg: #fef2f2;
   --red-border: #fbd0d0;
@@ -46,6 +56,55 @@
   --radius-sm: 10px;
   --focus: 0 0 0 3px rgb(14 163 180 / 0.3);
   --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+/**
+ * Mode sombre.
+ *
+ * Pas une inversion automatique : chaque valeur est choisie puis vérifiée au
+ * contraste contre la surface sombre. Le plus faible ratio du jeu est 5,81:1
+ * (rouge sur carte), au-delà du 4,5:1 exigé pour du texte courant.
+ *
+ * La rampe ambre garde son ordre en sombre — « À contacter » plus clair
+ * (9,08:1) que « À relancer » (5,88:1) — donc la progression reste lisible.
+ *
+ * Piloté par la préférence système seule : l'application est embarquée dans
+ * Softr et n'a pas de bascule. En ajouter une demanderait de dupliquer ce bloc
+ * sous `:root[data-theme="dark"]`.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --teal: #35c2d4;
+    --teal-deep: #2bb3c4;
+    --teal-ink: #6fd9e6;
+    --teal-soft: #10333b;
+    --green: #4cbe7b;
+    --green-bright: #6bd14a;
+    --green-soft: #12321f;
+
+    --ink: #e8ecf2;
+    --muted: #98a2b3;
+    --line: #2a3342;
+    --surface: #171e2b;
+    --bg: #11161f;
+
+    --amber: #d9862b;
+    --amber-bg: #2b2010;
+    --amber-border: #43301a;
+    --amber-soft: #f0b54a;
+    --amber-soft-bg: #33260d;
+    --amber-soft-border: #4d3913;
+
+    --red: #f07171;
+    --red-bg: #34191c;
+    --red-border: #4e2226;
+
+    --info: #7ba4f5;
+    --info-bg: #182541;
+    --info-border: #253a66;
+
+    --focus: 0 0 0 3px rgb(53 194 212 / 0.35);
+  }
 }
 
 html {
@@ -94,6 +153,25 @@ body {
     transition: none;
     transform: none;
   }
+}
+
+/**
+ * Message libre d'une carte.
+ *
+ * Deux lignes pleines, coupées proprement. L'italique le distingue des
+ * métadonnées : c'est la voix du demandeur, pas une valeur de champ. Deux
+ * lignes valent mieux qu'une troncature à quarante caractères, qui laissait
+ * une amorce inutilisable.
+ */
+.lead-message {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-style: italic;
+  /* Interligne resserré : deux lignes doivent rester un bloc compact. */
+  line-height: 1.45;
 }
 
 /* Barre de progression indéterminée : un segment qui balaie la largeur. */

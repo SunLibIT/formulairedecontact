@@ -27,6 +27,9 @@ export default {
           DEFAULT: 'var(--amber)',
           bg: 'var(--amber-bg)',
           border: 'var(--amber-border)',
+          soft: 'var(--amber-soft)',
+          'soft-bg': 'var(--amber-soft-bg)',
+          'soft-border': 'var(--amber-soft-border)',
         },
         danger: {
           DEFAULT: 'var(--red)',

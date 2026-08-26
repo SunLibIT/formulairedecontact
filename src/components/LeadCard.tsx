@@ -1,48 +1,117 @@
 /**
  * Carte de demande — unique, pour les deux sources.
  *
- * Remplace `ContactCard` et `AirtableCard`, qui étaient identiques à 90 % et
- * divergeaient sur des détails (l'une affichait `Date création`, l'autre
- * `Submit Date`, chacune reconstruisait le nom à sa façon). La normalisation
- * en `Lead` rend un seul composant suffisant.
+ * Hiérarchie de lecture, de haut en bas : **identité, puis décision, puis
+ * contact**. La version précédente faisait l'inverse — email et téléphone
+ * étaient les éléments les plus visibles alors qu'on ne scanne pas une file
+ * d'attente par email, tandis que le motif et l'ancienneté, qui décident de
+ * l'ordre de traitement, étaient en gris tout en bas.
  *
- * Charte appliquée : icône de type en tête, identité consolidée sans
- * répétition, date relative avec l'absolue en infobulle, toute la carte
- * cliquable, aucune donnée affichée deux fois.
+ * Deux signaux, deux formes, pas de concurrence :
+ *  - la **priorité** est un liseré de 3 px à gauche, doublé d'un texte masqué
+ *    pour les lecteurs d'écran ;
+ *  - l'**ancienneté** est le seul badge de la carte.
+ *
+ * Le statut reste visible en ligne de métadonnée, avec son icône : il informe
+ * sans revendiquer la place d'un badge.
  */
+import { HardHat, Landmark, MapPin, Sun, User, type LucideIcon } from 'lucide-react';
+import { useState } from 'react';
 import {
-  Briefcase,
-  Building2,
-  Euro,
-  HardHat,
-  Landmark,
-  Mail,
-  MapPin,
-  MessageSquare,
-  Phone,
-  Sun,
-  User,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react';
-import { formatAddress, type Lead } from '../lib/records';
-import { Initials, PriorityBadge, RelativeDate, StatusBadge } from './ui';
+  ageInDays,
+  ageTone,
+  DEFAULT_AGE_THRESHOLDS,
+  formatAge,
+  formatPersonName,
+  formatPhone,
+  type AgeThresholds,
+} from '../lib/format';
+import { shortMotive } from '../lib/motives';
+import type { Lead } from '../lib/records';
+import { STATUS_TONE, type Status } from '../lib/schema';
+import { TONE_CLASS, TONE_ICON } from '../lib/tones';
 
-/** Icône de catégorie, alignée sur le référentiel SunLib. */
+/**
+ * Icône de catégorie. Conservée parce qu'elle porte une information — le type
+ * de demandeur — contrairement aux icônes d'email et de téléphone retirées,
+ * qui ne faisaient que redire ce que la donnée montre déjà. L'ancienne icône
+ * d'immeuble servait à la fois au type et au motif : la collision de sens est
+ * levée, le motif n'a plus d'icône.
+ */
 const CATEGORY_ICON: Record<string, LucideIcon> = {
   'Un installateur': HardHat,
   'Un particulier': User,
-  'Une entreprise': Building2,
+  'Une entreprise': Landmark,
   'Une collectivité': Landmark,
   'Abonné SunLib': Sun,
   Particulier: User,
-  Entreprise: Building2,
+  Entreprise: Landmark,
 };
 
-export function LeadCard({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
+/** Libellé court du type de demandeur — « Un installateur » scanne mal. */
+const CATEGORY_LABEL: Record<string, string> = {
+  'Un installateur': 'Installateur',
+  'Un particulier': 'Particulier',
+  'Une entreprise': 'Entreprise',
+  'Une collectivité': 'Collectivité',
+  'Abonné SunLib': 'Abonné',
+};
+
+/** Liseré de priorité. « Basse » n'en porte pas : l'absence est un signal. */
+const PRIORITY_EDGE: Record<string, string> = {
+  Haute: 'var(--red)',
+  Moyenne: 'var(--amber-soft)',
+};
+
+export interface QuickAction {
+  label: string;
+  /** Champs à écrire côté Airtable. */
+  patch: { status?: Status; assigneeId?: string | null };
+}
+
+export function LeadCard({
+  lead,
+  onOpen,
+  onQuickAction,
+  viewerStaffId,
+  thresholds = DEFAULT_AGE_THRESHOLDS,
+}: {
+  lead: Lead;
+  onOpen: () => void;
+  /** Exécute l'action rapide. Résout quand l'écriture est terminée. */
+  onQuickAction?: (lead: Lead, action: QuickAction) => Promise<void>;
+  /** Enregistrement RH du visiteur, pour proposer « M'assigner ». */
+  viewerStaffId?: string | null;
+  thresholds?: AgeThresholds;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const days = ageInDays(lead.date);
+  const tone = ageTone(days, thresholds);
+  const StatusIcon = TONE_ICON[STATUS_TONE[lead.status]];
   const CategoryIcon = CATEGORY_ICON[lead.category] ?? User;
-  const address = formatAddress(lead.address);
-  const assignee = lead.assigneeNames.join(', ');
+
+  const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
+  const unassigned = !lead.assigneeIds.length && !lead.assigneeNames.length;
+  const edge = PRIORITY_EDGE[lead.priority];
+
+  // Une seule action, celle qui fait avancer le dossier là où il en est.
+  // Pas d'action inventée sur un dossier déjà traité.
+  const action: QuickAction | null = unassigned && viewerStaffId
+    ? { label: "M'assigner", patch: { assigneeId: viewerStaffId } }
+    : lead.status === 'Nouveau'
+      ? { label: 'Marquer contacté', patch: { status: 'A contacter' } }
+      : null;
+
+  const run = async () => {
+    if (!action || !onQuickAction || busy) return;
+    setBusy(true);
+    try {
+      await onQuickAction(lead, action);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <article
@@ -55,127 +124,131 @@ export function LeadCard({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
       }}
       role="button"
       tabIndex={0}
-      aria-label={`Ouvrir la demande de ${lead.fullName}`}
-      className="cursor-pointer rounded-card border border-line bg-surface p-4 transition-colors hover:bg-canvas"
+      aria-label={`Ouvrir la demande de ${formatPersonName(lead.fullName)}`}
+      // `h-full` + `flex-col` : toutes les cartes d'une rangée prennent la même
+      // hauteur et leur pied s'aligne en bas, quelle que soit la longueur du
+      // message. La grille n'est pas touchée.
+      className="flex h-full cursor-pointer flex-col overflow-hidden rounded-card border border-line bg-surface transition-colors hover:bg-canvas"
+      style={
+        edge
+          ? {
+              borderLeft: `3px solid ${edge}`,
+              // Le liseré doit être franc : pas d'arrondi de ce côté.
+              borderTopLeftRadius: 0,
+              borderBottomLeftRadius: 0,
+            }
+          : undefined
+      }
     >
-      <div className="flex items-start gap-3">
-        <Initials name={lead.fullName} />
+      {/* Le sens n'est jamais porté par la couleur seule : la priorité est
+          énoncée en texte pour les lecteurs d'écran. */}
+      <span className="sr-only">Priorité {lead.priority}.</span>
 
-        <div className="min-w-0 flex-1">
-          {/* Identité consolidée : nom + email sur la même ligne logique,
-              jamais répétés plus bas. */}
-          <h3 className="truncate font-semibold text-ink">{lead.fullName}</h3>
-          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
-            <CategoryIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            <span className="truncate">{lead.category || 'Type non renseigné'}</span>
-            {lead.company && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span className="truncate font-medium text-ink">{lead.company}</span>
-              </>
-            )}
-          </div>
+      <div className="min-w-0 flex-1 p-4">
+        {/* ---- identité ---- */}
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <h3 className="min-w-0 flex-1 truncate font-semibold text-ink">
+            {formatPersonName(lead.fullName)}
+          </h3>
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${TONE_CLASS[tone]}`}
+            title={`Reçue il y a ${days ?? '?'} jour(s)`}
+          >
+            {formatAge(days)}
+          </span>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <StatusBadge status={lead.status} />
-          <PriorityBadge priority={lead.priority} />
-        </div>
+        <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
+          <CategoryIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+          <span className="truncate">
+            {CATEGORY_LABEL[lead.category] ?? lead.category ?? 'Type inconnu'}
+            {lead.company && ` · ${lead.company}`}
+          </span>
+        </p>
+
+        {/* Ville seule, pas l'adresse complète : minimisation des données.
+            L'adresse reste dans la fiche de détail, consultée à la demande. */}
+        {lead.address.city && (
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted">
+            <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            <span className="truncate">
+              {lead.address.city}
+              {lead.address.department && ` (${lead.address.department})`}
+            </span>
+          </p>
+        )}
+
+        {/* ---- décision ---- */}
+        {lead.motive && (
+          <p className="mt-3 truncate text-sm font-semibold text-ink" title={lead.motive}>
+            {shortMotive(lead.motive)}
+          </p>
+        )}
+
+        {/* Style éditorial : le message est la voix du demandeur, pas une
+            métadonnée. Deux lignes pleines, pas quarante caractères. */}
+        {lead.message && (
+          <p className="lead-message mt-1.5 text-sm text-muted">{lead.message}</p>
+        )}
       </div>
 
-      <dl className="mt-3 space-y-1.5 text-sm">
-        {lead.email && (
-          <Row icon={Mail} label="Email">
-            <span className="truncate">{lead.email}</span>
-          </Row>
-        )}
-        {lead.phone && (
-          <Row icon={Phone} label="Téléphone">
-            {lead.phone}
-          </Row>
-        )}
-        {lead.motive && (
-          <Row icon={Briefcase} label="Motif">
-            <span className="line-clamp-1 font-medium">{lead.motive}</span>
-          </Row>
-        )}
-        {address && (
-          <Row icon={MapPin} label="Adresse">
-            <span className="line-clamp-1">{address}</span>
-          </Row>
-        )}
-        {lead.message && (
-          <Row icon={MessageSquare} label="Message">
-            <span className="line-clamp-1 italic text-muted">{lead.message}</span>
-          </Row>
-        )}
+      {/* ---- contact et action, en pied aligné en bas ---- */}
+      <div className="mt-auto min-w-0 border-t border-line px-4 py-2.5">
+        <p className="flex min-w-0 items-center gap-1.5 text-xs">
+          <StatusIcon
+            className={`h-3.5 w-3.5 shrink-0 ${TONE_CLASS[STATUS_TONE[lead.status]].split(' ').find((c) => c.startsWith('text-')) ?? ''}`}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          <span className="truncate font-medium text-ink">{lead.status}</span>
+          <span className="shrink-0 text-muted" aria-hidden="true">
+            ·
+          </span>
+          <span className="truncate text-muted">{assignee || 'Non assigné'}</span>
+        </p>
 
-        {/* Chiffres propres au simulateur : alignés à droite, comme l'exige
-            la charte pour les valeurs numériques. */}
-        {lead.source === 'solar' && lead.metrics && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs text-muted">
-            {lead.metrics.monthlyBill != null && (
-              <Metric icon={Euro} value={`${lead.metrics.monthlyBill} €/mois`} />
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-col">
+            {/* Cibles tactiles de 44 px, obtenues par le padding vertical. */}
+            {lead.email && (
+              <a
+                href={`mailto:${lead.email}`}
+                onClick={stop}
+                className="min-w-0 truncate py-1.5 text-xs text-teal-ink hover:underline"
+              >
+                {lead.email}
+              </a>
             )}
-            {lead.metrics.recommendedPower != null && (
-              <Metric icon={Sun} value={`${lead.metrics.recommendedPower} kWc`} />
-            )}
-            {lead.metrics.annualConsumption != null && (
-              <Metric icon={Zap} value={`${lead.metrics.annualConsumption} kWh/an`} />
+            {lead.phone && (
+              <a
+                href={`tel:${lead.phone}`}
+                onClick={stop}
+                className="min-w-0 truncate py-1.5 text-xs tabular-nums text-teal-ink hover:underline"
+              >
+                {formatPhone(lead.phone)}
+              </a>
             )}
           </div>
-        )}
-      </dl>
 
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3 text-xs">
-        <span className="flex items-center gap-1.5 text-muted">
-          <User className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-          {assignee ? (
-            <span className="font-medium text-teal-ink">{assignee}</span>
-          ) : (
-            <span>Non assigné</span>
+          {action && onQuickAction && (
+            <button
+              type="button"
+              onClick={(e) => {
+                // Sans cet arrêt, l'action ouvrirait aussi la fiche.
+                e.stopPropagation();
+                void run();
+              }}
+              disabled={busy}
+              className="shrink-0 rounded-control bg-brand px-3 py-2.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? '…' : action.label}
+            </button>
           )}
-        </span>
-        <span className="flex items-center gap-2 text-muted">
-          {lead.partner && (
-            <span className="rounded-full bg-teal-soft px-2 py-0.5 font-medium text-teal-ink">
-              {lead.partner}
-            </span>
-          )}
-          <RelativeDate iso={lead.date} />
-        </span>
+        </div>
       </div>
     </article>
   );
 }
 
-function Row({
-  icon: Icon,
-  label,
-  children,
-}: {
-  icon: LucideIcon;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start gap-2 text-ink">
-      <dt className="sr-only">{label}</dt>
-      <Icon
-        className="mt-0.5 h-4 w-4 shrink-0 text-teal-ink"
-        strokeWidth={1.75}
-        aria-hidden="true"
-      />
-      <dd className="min-w-0 flex-1">{children}</dd>
-    </div>
-  );
-}
-
-function Metric({ icon: Icon, value }: { icon: LucideIcon; value: string }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-      <span className="tabular-nums">{value}</span>
-    </span>
-  );
-}
+/** Empêche un lien du pied d'ouvrir la fiche. */
+const stop = (e: React.MouseEvent) => e.stopPropagation();
