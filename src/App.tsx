@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { FilterBar } from './components/FilterBar';
+import { KpiPanel } from './components/KpiPanel';
 import { LeadCard } from './components/LeadCard';
 import { LeadModal } from './components/LeadModal';
 import { PeriodFilter } from './components/PeriodFilter';
@@ -46,14 +47,18 @@ import { STATUS_TONE, type Status } from './lib/schema';
 /** Nombre de cartes rendues d'un coup — le reste à la demande. */
 const PAGE = 60;
 
-const TAB_LABEL: Record<LeadTable, string> = {
+/** Les deux listes, plus le tableau de bord. */
+type View = LeadTable | 'kpi';
+
+const TAB_LABEL: Record<View, string> = {
   contact: 'Demandes de contact',
   solar: 'Leads simulateur',
+  kpi: 'Indicateurs',
 };
 
 export default function App() {
   const { staff, byId, error: staffError } = useStaff();
-  const [tab, setTab] = useState<LeadTable>('contact');
+  const [tab, setTab] = useState<View>('contact');
   const [selected, setSelected] = useState<Lead | null>(null);
 
   // Les deux tables sont chargées d'emblée : elles totalisent moins de 800
@@ -61,11 +66,14 @@ export default function App() {
   // basculement instantané.
   const contact = useLeads('contact', byId);
   const solar = useLeads('solar', byId);
-  const active = tab === 'contact' ? contact : solar;
+  // L'onglet Indicateurs lit les deux tables ; on l'aligne sur les demandes de
+  // contact pour l'état de chargement et le bouton d'actualisation.
+  const active = tab === 'solar' ? solar : contact;
 
-  const [filters, setFilters] = useState<Record<LeadTable, FilterState>>({
+  const [filters, setFilters] = useState<Record<View, FilterState>>({
     contact: EMPTY_FILTERS,
     solar: EMPTY_FILTERS,
+    kpi: EMPTY_FILTERS,
   });
   const [visible, setVisible] = useState(PAGE);
 
@@ -158,15 +166,29 @@ export default function App() {
         <Tabs
           value={tab}
           onChange={(id) => {
-            setTab(id as LeadTable);
+            setTab(id as View);
             setVisible(PAGE);
           }}
           items={[
             { id: 'contact', label: TAB_LABEL.contact, count: contact.leads.length },
             { id: 'solar', label: TAB_LABEL.solar, count: solar.leads.length },
+            { id: 'kpi', label: TAB_LABEL.kpi },
           ]}
         />
 
+        {tab === 'kpi' ? (
+          <>
+            {/* Le total n'est pas passé : le panneau l'affiche déjà, calculé
+                sur sa propre sélection de source. */}
+            <PeriodFilter key={tab} filters={current} onChange={patchFilters} />
+            <KpiPanel
+              contactLeads={contact.leads}
+              solarLeads={solar.leads}
+              filters={current}
+            />
+          </>
+        ) : (
+          <>
         <section
           aria-label="Répartition par statut"
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
@@ -273,6 +295,8 @@ export default function App() {
                 </SecondaryButton>
               </div>
             )}
+          </>
+        )}
           </>
         )}
       </main>

@@ -74,8 +74,12 @@ export function PeriodFilter({
 }: {
   filters: FilterState;
   onChange: (patch: Partial<FilterState>) => void;
-  /** Nombre de demandes dans la période, pour rendre l'effet visible. */
-  matching: number;
+  /**
+   * Nombre de demandes dans la période. Omis quand la vue affiche déjà ce
+   * total ailleurs : la charte demande de ne pas montrer deux fois la même
+   * donnée, à plus forte raison si les deux calculs peuvent différer.
+   */
+  matching?: number;
 }) {
   // « Sur mesure » ne peut pas être déduit des dates : toute plage que l'on
   // poserait correspondrait à un raccourci existant, et le bouton se
@@ -150,10 +154,12 @@ export function PeriodFilter({
         </div>
       )}
 
-      <p className="ml-auto text-sm text-muted">
-        <span className="font-semibold tabular-nums text-ink">{matching}</span>{' '}
-        demande{matching > 1 ? 's' : ''} {active ? 'sur la période' : 'au total'}
-      </p>
+      {matching !== undefined && (
+        <p className="ml-auto text-sm text-muted">
+          <span className="font-semibold tabular-nums text-ink">{matching}</span>{' '}
+          demande{matching > 1 ? 's' : ''} {active ? 'sur la période' : 'au total'}
+        </p>
+      )}
     </section>
   );
 }
