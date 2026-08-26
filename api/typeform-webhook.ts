@@ -65,14 +65,37 @@ const json = (body: unknown, status: number) =>
  * Typeform envoie `sha256=<base64(hmac_sha256(corps_brut, secret))>`. Le corps
  * doit être celui reçu **octet pour octet** : re-sérialiser le JSON changerait
  * l'empreinte. La comparaison est à temps constant.
+ *
+ * Renvoie aussi de quoi diagnostiquer un refus sans jamais divulguer le secret
+ * ni la signature : uniquement des longueurs et le préfixe d'algorithme.
  */
-function signatureValid(rawBody: string, header: string | null, secret: string): boolean {
-  if (!header) return false;
+function checkSignature(
+  rawBody: string,
+  rawHeader: string | null,
+  secret: string,
+): { valid: boolean; diagnostic: Record<string, unknown> } {
+  const header = rawHeader?.trim() ?? '';
   const expected =
     'sha256=' + createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
+
+  const diagnostic = {
+    headerPresent: Boolean(rawHeader),
+    headerLength: header.length,
+    headerPrefix: header.slice(0, 7),
+    expectedLength: expected.length,
+    bodyLength: rawBody.length,
+    // Longueur seule : 43 est la valeur attendue pour un secret généré par
+    // `token_urlsafe(32)`. 44 ou plus trahit un espace ou un retour à la
+    // ligne collé avec la valeur dans Vercel.
+    secretLength: secret.length,
+  };
+
+  if (!header) return { valid: false, diagnostic };
+
   const a = Buffer.from(header);
   const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  const valid = a.length === b.length && timingSafeEqual(a, b);
+  return { valid, diagnostic };
 }
 
 /**
@@ -82,7 +105,9 @@ function signatureValid(rawBody: string, header: string | null, secret: string):
  * méthode autre que POST.
  */
 export async function POST(req: Request): Promise<Response> {
-  const secret = process.env.TYPEFORM_SECRET;
+  // `.trim()` volontaire : coller une valeur dans Vercel embarque souvent un
+  // retour à la ligne, ce qui invaliderait silencieusement toute signature.
+  const secret = process.env.TYPEFORM_SECRET?.trim();
   if (!secret) {
     return json({ error: 'TYPEFORM_SECRET absent de la configuration serveur.' }, 500);
   }
@@ -90,8 +115,16 @@ export async function POST(req: Request): Promise<Response> {
   // Corps brut d'abord : la signature porte sur lui, pas sur l'objet analysé.
   const rawBody = await req.text();
 
-  if (!signatureValid(rawBody, req.headers.get('typeform-signature'), secret)) {
-    // Pas de détail dans la réponse : inutile d'aider un appelant illégitime.
+  const { valid, diagnostic } = checkSignature(
+    rawBody,
+    req.headers.get('typeform-signature'),
+    secret,
+  );
+  if (!valid) {
+    // Journalisé pour pouvoir distinguer « aucune signature reçue » de
+    // « signature reçue mais secret différent ». La réponse, elle, reste
+    // muette : inutile d'aider un appelant illégitime.
+    console.warn('[typeform-webhook] signature refusée', JSON.stringify(diagnostic));
     return json({ error: 'Signature invalide.' }, 401);
   }
 
