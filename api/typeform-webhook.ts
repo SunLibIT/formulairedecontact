@@ -171,6 +171,39 @@ export async function POST(req: Request): Promise<Response> {
   const formLabel = response.form_id ? FORM_LABEL[response.form_id] : undefined;
   if (formLabel) fields[CONTACT.formId] = formLabel;
 
+  // Garde-fou : les refs de `FIELD_REFS` désignent des questions de deux
+  // formulaires précis. Branché sur un autre formulaire, le mapping ne
+  // résoudrait rien et créerait des lignes vides sans erreur. On compte donc
+  // ce qui a réellement été résolu et on le journalise.
+  //
+  // L'enregistrement est écrit malgré tout : `Raw JSON` conserve la charge
+  // utile intégrale, ce qui permet de re-mapper après coup sans rien
+  // redemander à Typeform. Perdre la donnée serait pire que la stocker mal.
+  const resolved = [
+    CONTACT.firstName, CONTACT.lastName, CONTACT.email, CONTACT.phone,
+    CONTACT.company, CONTACT.requesterType, CONTACT.motive, CONTACT.message,
+    CONTACT.address, CONTACT.city, CONTACT.postalCode,
+  ].filter((key) => {
+    const v = fields[key];
+    return typeof v === 'string' && v.trim().length > 0;
+  }).length;
+
+  if (!formLabel || resolved === 0) {
+    console.warn(
+      '[typeform-webhook] mapping suspect',
+      JSON.stringify({
+        formId: response.form_id ?? null,
+        formKnown: Boolean(formLabel),
+        resolvedFields: resolved,
+        answerCount: answers.length,
+        responseId,
+        // Les refs reçues permettent de compléter FIELD_REFS pour un
+        // formulaire encore inconnu, sans exposer les réponses.
+        receivedRefs: answers.map((a) => a.field?.ref).filter(Boolean).slice(0, 40),
+      }),
+    );
+  }
+
   // Une liste déroulante refuse une chaîne vide : on n'envoie que ce qui est
   // renseigné. Un champ absent reste vide dans Airtable.
   for (const key of [CONTACT.requesterType, CONTACT.motive] as const) {
