@@ -9,8 +9,6 @@
  */
 import {
   AlertTriangle,
-  Bell,
-  CheckCircle,
   Inbox,
   RefreshCw,
   ShieldAlert,
@@ -173,13 +171,12 @@ export default function App() {
           aria-label="Répartition par statut"
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
         >
-          {/* Chaque tuile porte le ton de son statut, pris dans STATUS_TONE :
-              le code couleur du dashboard et celui des badges ne peuvent pas
-              diverger. */}
+          {/* Ni couleur ni icône ne sont passées : la tuile les déduit du ton
+              du statut qu'elle compte, donc elle affiche exactement le même
+              signal visuel que le badge correspondant sur les cartes. */}
           <StatTile
             label="Nouveau"
             value={stats.byStatus.Nouveau}
-            icon={Inbox}
             tone={STATUS_TONE.Nouveau}
             active={current.status === 'Nouveau'}
             onClick={() => toggleStatus('Nouveau')}
@@ -187,7 +184,6 @@ export default function App() {
           <StatTile
             label="À contacter"
             value={stats.byStatus['A contacter']}
-            icon={Bell}
             tone={STATUS_TONE['A contacter']}
             active={current.status === 'A contacter'}
             onClick={() => toggleStatus('A contacter')}
@@ -195,11 +191,12 @@ export default function App() {
           <StatTile
             label="Qualifié"
             value={stats.byStatus.Qualifié}
-            icon={CheckCircle}
             tone={STATUS_TONE.Qualifié}
             active={current.status === 'Qualifié'}
             onClick={() => toggleStatus('Qualifié')}
           />
+          {/* Seule exception : « non assigné » n'est pas un statut. Son icône
+              reprend celle de la ligne « assigné à » des cartes. */}
           <StatTile
             label="Non assigné"
             value={stats.unassigned}

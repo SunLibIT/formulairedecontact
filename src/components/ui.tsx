@@ -70,7 +70,7 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 export function StatTile({
   label,
   value,
-  icon: Icon,
+  icon,
   hint,
   tone = 'neutral',
   active = false,
@@ -78,13 +78,20 @@ export function StatTile({
 }: {
   label: string;
   value: number;
-  icon: LucideIcon;
+  /**
+   * Facultatif : par défaut la tuile prend l'icône de son ton, donc la même
+   * que le badge du statut qu'elle compte. La charte veut qu'une notion garde
+   * la même icône partout — en la déduisant, une divergence devient
+   * impossible plutôt que simplement déconseillée.
+   */
+  icon?: LucideIcon;
   hint?: string;
   /** Reprend le code couleur du statut que la tuile compte. */
   tone?: Tone;
   active?: boolean;
   onClick?: () => void;
 }) {
+  const Icon = icon ?? TONE_ICON[tone];
   const interactive = Boolean(onClick);
   return (
     <button
