@@ -49,6 +49,23 @@ export const TONE_ACCENT: Record<Tone, string> = {
   rejected: 'bg-danger-bg text-danger',
 };
 
+/**
+ * Couleur pleine du ton, pour un aplat : liseré de ligne, barre de graphique.
+ *
+ * Distincte de `TONE_CLASS`, qui produit une pastille (fond clair, texte
+ * foncé). Ici on veut la teinte elle-même, en valeur CSS et non en classe,
+ * parce qu'elle sert dans des styles calculés — largeur de barre, ombre
+ * interne d'une ligne.
+ */
+export const TONE_FILL: Record<Tone, string> = {
+  neutral: 'var(--muted)',
+  fresh: 'var(--green)',
+  action: 'var(--amber-soft)',
+  followup: 'var(--amber)',
+  qualified: 'var(--info)',
+  rejected: 'var(--red)',
+};
+
 export const TONE_ICON: Record<Tone, LucideIcon> = {
   neutral: Circle,
   fresh: Sparkle,

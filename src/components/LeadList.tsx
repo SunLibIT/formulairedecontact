@@ -228,7 +228,6 @@ function Row({
 
   const days = ageInDays(lead.date);
   const tone = ageTone(days, thresholds);
-  const edge = priorityEdge(lead);
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
 
 
@@ -248,7 +247,8 @@ function Row({
       className={`${GRID} group h-full cursor-pointer border-b border-line px-3 ${
         selection?.isSelected(lead.id) ? 'bg-teal-soft' : 'hover:bg-canvas'
       }`}
-      style={edge ? { boxShadow: `inset 3px 0 0 0 ${edge}` } : undefined}
+      // Liseré sur toutes les lignes, sans exception : voir priorityEdge.
+      style={{ boxShadow: `inset 3px 0 0 0 ${priorityEdge(lead)}` }}
     >
       {/* Le liseré est une couleur : on double par du texte masqué. */}
       <span className="sr-only">Priorité {lead.priority}.</span>

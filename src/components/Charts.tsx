@@ -18,20 +18,10 @@
  */
 import { useState, type ReactNode } from 'react';
 import type { Tone } from '../lib/schema';
-import { TONE_ICON } from '../lib/tones';
+import { TONE_FILL, TONE_ICON } from '../lib/tones';
 
 /** Teinte unique des barres nominales — accent de la charte. */
 const NOMINAL_FILL = 'var(--teal)';
-
-/** Couleur de remplissage par ton, pour les seules barres de statut. */
-const TONE_FILL: Record<Tone, string> = {
-  neutral: 'var(--muted)',
-  fresh: 'var(--green)',
-  action: 'var(--amber-soft)',
-  followup: 'var(--amber)',
-  qualified: 'var(--info)',
-  rejected: 'var(--red)',
-};
 
 /* ------------------------------------------------------------------ cadre */
 

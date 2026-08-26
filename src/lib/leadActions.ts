@@ -12,18 +12,23 @@
  * et c'est de la présentation, pas de la logique.
  */
 import type { Lead } from './records';
+import { PRIORITY_TONE } from './schema';
+import { TONE_FILL } from './tones';
 
 /**
- * Couleur du liseré de priorité, ou `undefined` pour « Basse ».
+ * Couleur du liseré de priorité. **Toujours définie**, pour les trois niveaux.
  *
- * L'absence de liseré est le signal de la priorité basse : si les trois
- * niveaux portaient une couleur, chaque ligne serait bordée et le liseré ne
- * distinguerait plus rien.
+ * La version précédente ne renvoyait rien pour « Basse », en faisant de
+ * l'absence de liseré le signal du niveau bas. C'était une erreur : une
+ * absence est ambiguë, on ne distingue pas « priorité basse » de « donnée
+ * manquante », et une ligne sur deux paraissait simplement inachevée. Un
+ * signal doit être présent pour être lu.
+ *
+ * La teinte est dérivée de `PRIORITY_TONE`, donc elle ne peut pas divergier de
+ * la pastille de priorité affichée à côté.
  */
-export function priorityEdge(lead: Lead): string | undefined {
-  if (lead.priority === 'Haute') return 'var(--red)';
-  if (lead.priority === 'Moyenne') return 'var(--amber-soft)';
-  return undefined;
+export function priorityEdge(lead: Lead): string {
+  return TONE_FILL[PRIORITY_TONE[lead.priority] ?? 'neutral'];
 }
 
 /** Libellés courts des types de demandeur — « Un installateur » scanne mal. */
