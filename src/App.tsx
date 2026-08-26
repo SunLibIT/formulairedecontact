@@ -23,6 +23,7 @@ import { LeadCard } from './components/LeadCard';
 import { LeadList } from './components/LeadList';
 import { LeadModal } from './components/LeadModal';
 import { PeriodFilter } from './components/PeriodFilter';
+import { ViewSwitcher } from './components/ViewSwitcher';
 import {
   Callout,
   EmptyState,
@@ -35,6 +36,7 @@ import {
   TopProgressBar,
 } from './components/ui';
 import { useLeads, useStaff, type LeadTable } from './hooks/useLeads';
+import { useViewPreference } from './hooks/useViewPreference';
 import { useViewer } from './hooks/useViewer';
 import { updateRecord, usesDirectToken } from './lib/airtable';
 import {
@@ -92,11 +94,10 @@ export default function App() {
   // Le tri vit au-dessus des vues : il est conservé quand on bascule.
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
 
-  // Passe (a) : la vue liste est atteignable par `?view=list`. Le sélecteur
-  // et la persistance de la préférence viennent en passe (b).
-  const listView =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('view') === 'list';
+  // Vue résolue à partir de la largeur d'écran, de l'URL puis de la
+  // préférence stockée. Indépendante des données : basculer ne relance rien.
+  const { view, setView, canChoose } = useViewPreference();
+  const listView = view === 'list';
 
   const current = filters[tab];
 
@@ -382,10 +383,16 @@ export default function App() {
           </EmptyState>
         ) : (
           <>
-            <p aria-live="polite" className="text-sm text-muted">
-              {sorted.length} demande{sorted.length > 1 ? 's' : ''}
-              {sorted.length !== active.leads.length && ` sur ${active.leads.length}`}
-            </p>
+            {/* Barre d'outils du contenu : compteur à gauche, sélecteur
+                d'affichage à droite. Masqué sous 700 px, où une seule vue a
+                du sens. */}
+            <div className="flex items-center justify-between gap-3">
+              <p aria-live="polite" className="text-sm text-muted">
+                {sorted.length} demande{sorted.length > 1 ? 's' : ''}
+                {sorted.length !== active.leads.length && ` sur ${active.leads.length}`}
+              </p>
+              {canChoose && <ViewSwitcher value={view} onChange={setView} />}
+            </div>
 
             {listView ? (
               // La liste est virtualisée : elle affiche l'ensemble sans
