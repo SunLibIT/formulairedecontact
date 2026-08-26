@@ -12,7 +12,12 @@
  *
  * Charte : en-tête fixe, corps défilant, pied fixe ; `role="dialog"` +
  * `aria-modal`, piège de focus, Échap et clic sur l'arrière-plan, restitution
- * du focus à la fermeture ; action destructrice sous confirmation.
+ * du focus à la fermeture.
+ *
+ * « Hors critères » agit en un clic, sans confirmation. La charte réserve
+ * l'écran de confirmation aux actions destructrices ; celle-ci ne détruit
+ * rien — elle pose un statut que la liste juste au-dessus permet de changer
+ * aussitôt.
  */
 import {
   AlertTriangle,
@@ -64,7 +69,6 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
   const [notes, setNotes] = useState(lead.notes);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [confirmingReject, setConfirmingReject] = useState(false);
 
   const titleId = useId();
   // Piège de focus, Échap, verrou de défilement et restitution du focus :
@@ -315,28 +319,20 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
 
         {/* ---- pied fixe ---- */}
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-canvas px-5 py-3">
-          {/* Action destructrice : jamais en accès direct. */}
-          {confirmingReject ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted">Classer hors critères ?</span>
-              <SecondaryButton
-                tone="danger"
-                busy={saving}
-                onClick={() => persist({ status: 'Hors Critères' })}
-              >
-                Confirmer
-              </SecondaryButton>
-              <SecondaryButton onClick={() => setConfirmingReject(false)}>Annuler</SecondaryButton>
-            </div>
-          ) : (
-            <SecondaryButton
-              tone="danger"
-              icon={AlertTriangle}
-              onClick={() => setConfirmingReject(true)}
-            >
-              Hors critères
-            </SecondaryButton>
-          )}
+          {/* Un clic, sans confirmation. La charte proscrit l'accès direct
+              aux actions destructrices, mais celle-ci ne détruit rien : elle
+              pose un statut, que la liste juste au-dessus permet de changer
+              aussitôt. Une confirmation n'était que de la friction sur un
+              geste de tri courant. */}
+          <SecondaryButton
+            tone="danger"
+            icon={AlertTriangle}
+            busy={saving}
+            disabled={status === 'Hors Critères'}
+            onClick={() => void persist({ status: 'Hors Critères' })}
+          >
+            Hors critères
+          </SecondaryButton>
 
           <div className="flex items-center gap-2">
             <SecondaryButton onClick={onClose}>Fermer</SecondaryButton>
