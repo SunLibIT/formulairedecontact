@@ -13,7 +13,7 @@
  *    lecteur d'écran suive l'option survolée.
  */
 import { Check, ChevronDown, Search, X } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 export interface SelectOption {
   value: string;
@@ -46,6 +46,12 @@ export function SearchableSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Sens d'ouverture et hauteur disponible, mesurés à l'ouverture. Ouvrir
+  // systématiquement vers le bas rendait la liste inutilisable dès que le
+  // champ se trouvait en bas d'une modale courte.
+  const [placement, setPlacement] = useState<'below' | 'above'>('below');
+  const [listHeight, setListHeight] = useState(224);
+
   const collator = useMemo(() => new Intl.Collator('fr', { sensitivity: 'base' }), []);
 
   // Tri alphabétique systématique, insensible aux accents et à la casse.
@@ -75,6 +81,25 @@ export function SearchableSelect({
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const MARGIN = 12;
+    const SEARCH_ROW = 46;
+    const below = window.innerHeight - rect.bottom - MARGIN;
+    const above = rect.top - MARGIN;
+
+    // On préfère le bas ; on bascule vers le haut seulement s'il y est
+    // vraiment plus à l'aise.
+    const flip = below < 200 && above > below;
+    setPlacement(flip ? 'above' : 'below');
+    setListHeight(
+      Math.max(120, Math.min(288, (flip ? above : below) - SEARCH_ROW)),
+    );
   }, [open]);
 
   useEffect(() => {
@@ -143,7 +168,9 @@ export function SearchableSelect({
           // `z-40` et non `z-10` : l'en-tête collant de la vue liste est en
           // `z-10` et, plus loin dans le DOM, il peignait par-dessus la liste
           // déroulante — qui apparaissait coupée en deux.
-          className="absolute z-40 mt-1 w-full overflow-hidden rounded-control border border-line bg-surface shadow-lg"
+          className={`absolute z-40 w-full overflow-hidden rounded-control border border-line bg-surface shadow-lg ${
+            placement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
         >
           <div className="flex items-center gap-2 border-b border-line px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-muted" strokeWidth={2} aria-hidden="true" />
@@ -176,7 +203,13 @@ export function SearchableSelect({
             )}
           </div>
 
-          <ul id={listId} role="listbox" aria-label={ariaLabel} className="max-h-56 overflow-y-auto py-1">
+          <ul
+            id={listId}
+            role="listbox"
+            aria-label={ariaLabel}
+            className="overflow-y-auto py-1"
+            style={{ maxHeight: listHeight }}
+          >
             {rows.map((row, i) => {
               const isSelected = row.value === value;
               const isCursor = i === cursor;

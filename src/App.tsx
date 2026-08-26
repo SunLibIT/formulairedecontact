@@ -437,6 +437,7 @@ export default function App() {
                       key={lead.id}
                       lead={lead}
                       onOpen={() => setSelected(lead)}
+                      onAssign={setAssigning}
                     />
                   ))}
                 </div>

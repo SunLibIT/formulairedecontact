@@ -52,10 +52,13 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
 export function LeadCard({
   lead,
   onOpen,
+  onAssign,
   thresholds = DEFAULT_AGE_THRESHOLDS,
 }: {
   lead: Lead;
   onOpen: () => void;
+  /** Ouvre la modale d'assignation. Même action que dans la vue liste. */
+  onAssign?: (lead: Lead) => void;
   thresholds?: AgeThresholds;
 }) {
 
@@ -150,27 +153,45 @@ export function LeadCard({
           </span>
         </div>
 
-        {/* Contacts en pied : cibles tactiles de 44 px obtenues par le
-            padding vertical. Plus de bouton d'action ici — faire avancer un
-            dossier passe par la vue liste ou par la fiche. */}
-        <div className="mt-1.5 flex min-w-0 flex-col">
-          {lead.email && (
-            <a
-              href={`mailto:${lead.email}`}
-              onClick={stop}
-              className="min-w-0 truncate py-1.5 text-xs text-teal-ink hover:underline"
+        {/* Contacts et action. Cibles tactiles de 44 px obtenues par le
+            padding vertical. Contrairement à « Marquer contacté », retiré
+            d'ici comme trop secondaire, assigner est l'action qui débloque
+            réellement un dossier : 384 demandes sur 438 n'ont personne. */}
+        <div className="mt-1.5 flex min-w-0 items-end justify-between gap-2">
+          <div className="flex min-w-0 flex-col">
+            {lead.email && (
+              <a
+                href={`mailto:${lead.email}`}
+                onClick={stop}
+                className="min-w-0 truncate py-1.5 text-xs text-teal-ink hover:underline"
+              >
+                {lead.email}
+              </a>
+            )}
+            {lead.phone && (
+              <a
+                href={`tel:${lead.phone}`}
+                onClick={stop}
+                className="min-w-0 truncate py-1.5 text-xs tabular-nums text-teal-ink hover:underline"
+              >
+                {formatPhone(lead.phone)}
+              </a>
+            )}
+          </div>
+
+          {onAssign && (
+            <button
+              type="button"
+              onClick={(e) => {
+                // Sans cet arrêt, le clic ouvrirait aussi la fiche complète.
+                e.stopPropagation();
+                onAssign(lead);
+              }}
+              aria-label={`Assigner la demande de ${formatPersonName(lead.fullName)}`}
+              className="shrink-0 rounded-control border border-line bg-surface px-2.5 py-2 text-[11px] font-semibold text-ink transition-colors hover:bg-canvas"
             >
-              {lead.email}
-            </a>
-          )}
-          {lead.phone && (
-            <a
-              href={`tel:${lead.phone}`}
-              onClick={stop}
-              className="min-w-0 truncate py-1.5 text-xs tabular-nums text-teal-ink hover:underline"
-            >
-              {formatPhone(lead.phone)}
-            </a>
+              Assigner
+            </button>
           )}
         </div>
       </div>

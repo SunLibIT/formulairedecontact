@@ -74,9 +74,12 @@ export function AssignModal({
         aria-modal="true"
         aria-labelledby="assign-title"
         tabIndex={-1}
-        className="modal-panel flex w-full max-w-md flex-col overflow-hidden rounded-t-card bg-surface sm:rounded-card"
+        // Pas d'`overflow-hidden` : il découpait la liste déroulante dès
+        // qu'elle dépassait du panneau. Les coins sont donc arrondis sur
+        // l'en-tête et le pied eux-mêmes.
+        className="modal-panel flex w-full max-w-lg flex-col rounded-t-card bg-surface sm:rounded-card"
       >
-        <header className="flex items-start justify-between gap-3 border-b border-line bg-canvas px-5 py-4">
+        <header className="flex items-start justify-between gap-3 rounded-t-card border-b border-line bg-canvas px-5 py-4">
           <div className="min-w-0">
             <h2 id="assign-title" className="text-base font-bold text-ink">
               Assigner la demande
@@ -96,7 +99,7 @@ export function AssignModal({
           </button>
         </header>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="space-y-5 px-5 py-5">
           {/* État actuel, pour qu'on sache ce qu'on remplace. */}
           <p className="flex items-center gap-2 text-sm">
             <User className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.75} aria-hidden="true" />
@@ -144,7 +147,7 @@ export function AssignModal({
           )}
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-canvas px-5 py-3">
+        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-canvas px-5 py-3 sm:rounded-b-card">
           {/* Retirer l'assignation n'est proposé que s'il y a quelque chose à
               retirer. */}
           {current ? (
