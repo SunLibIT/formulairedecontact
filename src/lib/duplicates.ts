@@ -47,13 +47,18 @@ const EMPTY: DuplicateIndex = { marks: new Map(), addresses: 0, rows: 0 };
  * cesserait d'apparaître, alors que c'est précisément le cas qu'on cherche.
  *
  * Les lignes sans email sont ignorées : sans clé commune, rien ne permet
- * d'affirmer que deux d'entre elles concernent la même personne.
+ * d'affirmer que deux d'entre elles concernent la même personne. Les demandes
+ * **archivées** le sont aussi — voir le commentaire dans la boucle.
  */
 export function buildDuplicateIndex(leads: Lead[]): DuplicateIndex {
   if (!leads.length) return EMPTY;
 
   const groups = new Map<string, Lead[]>();
   for (const lead of leads) {
+    // Une demande archivée n'est plus un doublon à traiter : c'est le résultat
+    // du traitement. Sans cette exclusion, le compteur du filtre ne baisserait
+    // jamais après une fusion et le travail accompli resterait invisible.
+    if (lead.status === 'Archivé') continue;
     const email = normaliseEmail(lead.email);
     if (!email) continue;
     const group = groups.get(email);

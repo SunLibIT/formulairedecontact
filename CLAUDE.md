@@ -57,6 +57,7 @@ Typeform ──webhook──► api/typeform-webhook ──► Airtable
 | `lib/tones.ts` | the colour code rendered as classes, fills and icons |
 | `lib/csv.ts` | CSV serialisation, French number formats, download |
 | `lib/duplicates.ts` | spots repeat requests from one address; never merges |
+| `lib/merge.ts` | fills the kept request from its duplicates, archives the rest |
 | `lib/marketingExport.ts` | derived campaign columns, dedup on email |
 | `lib/kpiExport.ts` | dashboard indicators as a long table |
 | `hooks/` | loading, staff cache, view preference, selection, dialog mechanics |
@@ -313,6 +314,35 @@ and never writes — that is the whole point.
 - `DuplicateBadge` carries a third shape — outlined, no coloured fill — because status and
   priority already own the two axes of the sales pipeline. Only the most recent request
   goes teal.
+
+### Merging duplicates
+
+`lib/merge.ts` turns a duplicate group into a plan, `MergeModal` shows the plan, and
+`applyMerge` in `App.tsx` writes it. The rule is one sentence: **fill, never overwrite.**
+
+- The most recent request is kept and receives only the fields it leaves **empty** and an
+  older one had filled. The others go to « Archivé ».
+- **Status and priority are never carried over.** They are sales decisions, and on 19 of
+  the 37 real groups they contradict each other — carrying them would let a July
+  « Hors Critères » overwrite an August « Qualifié ».
+- **Nothing is deleted.** Everything is a `PATCH`, so the proxy keeps its two methods and
+  the operation is undone by giving the archived rows their status back. This was a
+  deliberate choice over real deletion, which would have meant opening `DELETE` on a
+  public unauthenticated proxy (Deployment Protection must stay off for Softr and
+  Typeform).
+- `planMerge` returns `null` on a heterogeneous group — different addresses, different
+  tables, fewer than two rows. The same call decides whether the button appears, so no
+  button ever offers a merge the write would refuse.
+- `plan.merged` is the kept request as it will be **after** the write. `App` patches it
+  locally instead of reloading 440 rows, and since the plan produces it, screen and
+  database cannot disagree.
+- Archived rows leave the duplicate index (`buildDuplicateIndex` skips « Archivé »),
+  otherwise the filter counter would never drop and the work done would stay invisible.
+- Measured over the 37 real groups: 61 rows archived, but only **6 groups actually gain a
+  field** (4 « Société », 2 « Partenaire »). Typeform asks the same questions every time,
+  so the newest request is usually already as complete as the old ones — the value of the
+  feature is the archiving, not the field transfer. The modal says so rather than
+  implying a transfer that will not happen.
 
 ### Colour and icons
 

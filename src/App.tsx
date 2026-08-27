@@ -26,6 +26,7 @@ import { KpiPanel } from './components/KpiPanel';
 import { LeadCard } from './components/LeadCard';
 import { LeadList } from './components/LeadList';
 import { LeadModal } from './components/LeadModal';
+import { MergeModal } from './components/MergeModal';
 import { PeriodFilter } from './components/PeriodFilter';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import {
@@ -59,6 +60,7 @@ import {
   type SortState,
 } from './lib/filters';
 import { buildDuplicateIndex, groupByAddress, keepDuplicates } from './lib/duplicates';
+import { mergeFields, planMerge, type MergePlan } from './lib/merge';
 import type { Lead } from './lib/records';
 import { STATUS_TONE, type Status } from './lib/schema';
 import { sectorKeyOf } from './lib/territories';
@@ -86,6 +88,7 @@ export default function App() {
   const [tab, setTab] = useState<View>('contact');
   const [selected, setSelected] = useState<Lead | null>(null);
   const [assigning, setAssigning] = useState<Lead | null>(null);
+  const [merging, setMerging] = useState<MergePlan | null>(null);
 
   // Les deux tables sont chargées d'emblée : elles totalisent moins de 800
   // enregistrements, ce qui rend les compteurs d'onglets exacts et le
@@ -226,6 +229,49 @@ export default function App() {
     const [key] = [...keys];
     return key ? sectors.get(key) ?? null : null;
   }, [selection.count, selection.ids, sorted, sectors]);
+
+  /**
+   * Plan de fusion de la sélection, s'il y en a un.
+   *
+   * `planMerge` refuse un lot hétérogène — adresses différentes, tables
+   * différentes, moins de deux lignes — et c'est cette même règle qui décide
+   * de l'apparition du bouton. Une seule définition de « fusionnable », donc
+   * pas de bouton qui propose une action que l'écriture refusera.
+   */
+  const mergePlan = useMemo(() => {
+    if (selection.count < 2) return null;
+    return planMerge(sorted.filter((l) => selection.ids.has(l.id)));
+  }, [selection.count, selection.ids, sorted]);
+
+  /**
+   * Applique une fusion : complète la demande conservée, archive les autres.
+   *
+   * Deux écritures distinctes et dans cet ordre : si l'archivage échoue, la
+   * cible est déjà complétée et rien n'est perdu — l'inverse laisserait des
+   * demandes archivées dont les valeurs n'ont pas été reprises.
+   */
+  const applyMerge = useCallback(
+    async (plan: MergePlan) => {
+      const target = WRITE_TARGET[plan.target.source];
+      const fields = mergeFields(plan);
+
+      if (Object.keys(fields).length) {
+        await updateRecord(target.tableId, plan.target.id, fields);
+      }
+      await updateRecords(
+        target.tableId,
+        plan.sources.map((s) => ({ id: s.id, fields: { [target.status]: 'Archivé' } })),
+      );
+
+      // Correction locale plutôt qu'un rechargement de 440 lignes. `merged`
+      // vient du plan, donc l'écran montre exactement ce qui a été écrit.
+      const source = plan.target.source === 'contact' ? contact : solar;
+      source.patchLocal(plan.target.id, plan.merged);
+      for (const s of plan.sources) source.patchLocal(s.id, { status: 'Archivé' });
+      selection.clear();
+    },
+    [contact, solar, selection],
+  );
 
   /** Bascule un statut depuis une tuile : re-cliquer désélectionne. */
   const toggleStatus = (status: Status) =>
@@ -578,6 +624,7 @@ export default function App() {
             coverage={coverage}
             onApply={applyBulk}
             onClear={selection.clear}
+            onMerge={mergePlan ? () => setMerging(mergePlan) : undefined}
           />
         )}
       </main>
@@ -591,6 +638,14 @@ export default function App() {
           coverage={coverage}
           onClose={() => setAssigning(null)}
           onAssign={assign}
+        />
+      )}
+
+      {merging && (
+        <MergeModal
+          plan={merging}
+          onClose={() => setMerging(null)}
+          onMerge={applyMerge}
         />
       )}
 

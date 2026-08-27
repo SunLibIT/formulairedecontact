@@ -9,7 +9,7 @@
  * poignée de secondes. D'où une progression chiffrée et un bouton
  * d'interruption, plutôt qu'un bouton qui semble figé.
  */
-import { AlertTriangle, Check, Loader2, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, Merge, X } from 'lucide-react';
 import { useState } from 'react';
 import type { StaffMember } from '../lib/records';
 import {
@@ -41,6 +41,7 @@ export function BulkActionBar({
   coverage,
   onApply,
   onClear,
+  onMerge,
 }: {
   count: number;
   staff: StaffMember[];
@@ -60,6 +61,12 @@ export function BulkActionBar({
     handlers: { onProgress: (done: number, total: number) => void; signal: AbortSignal },
   ) => Promise<BulkOutcome>;
   onClear: () => void;
+  /**
+   * Propose la fusion. Renseigné seulement quand la sélection forme un
+   * groupe fusionnable — même adresse, même table, au moins deux lignes —
+   * ce qui est la condition pour que le bouton apparaisse.
+   */
+  onMerge?: () => void;
 }) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [controller, setController] = useState<AbortController | null>(null);
@@ -166,6 +173,15 @@ export function BulkActionBar({
               ))}
             </select>
           </label>
+
+          {/* Mis en avant à part : c'est la seule action qui touche plusieurs
+              enregistrements de façons différentes — l'une complétée, les
+              autres archivées. Elle passe donc par une confirmation. */}
+          {onMerge && (
+            <SecondaryButton icon={Merge} onClick={onMerge}>
+              Fusionner
+            </SecondaryButton>
+          )}
 
           <SecondaryButton icon={X} onClick={onClear}>
             Désélectionner

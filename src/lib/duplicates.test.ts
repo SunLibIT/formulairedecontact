@@ -85,6 +85,28 @@ describe('buildDuplicateIndex', () => {
     expect(index.marks.size).toBe(0);
   });
 
+  it('ignore les demandes archivées, qui sont le résultat du traitement', () => {
+    // Après une fusion les doublons passent en « Archivé » : les recompter
+    // figerait le compteur du filtre et masquerait le travail accompli.
+    const index = buildDuplicateIndex([
+      lead({ id: 'gardee', email: 'a@b.fr' }),
+      lead({ id: 'fusionnee', email: 'a@b.fr', status: 'Archivé' }),
+    ]);
+    expect(index.addresses).toBe(0);
+    expect(index.marks.size).toBe(0);
+  });
+
+  it('garde le groupe tant qu’il reste deux demandes actives', () => {
+    const index = buildDuplicateIndex([
+      lead({ id: 'a', email: 'a@b.fr' }),
+      lead({ id: 'b', email: 'a@b.fr' }),
+      lead({ id: 'vieille', email: 'a@b.fr', status: 'Archivé' }),
+    ]);
+    expect(index.addresses).toBe(1);
+    expect(index.marks.get('a')?.count).toBe(2);
+    expect(index.marks.has('vieille')).toBe(false);
+  });
+
   it('reste vide sur une table vide', () => {
     const index = buildDuplicateIndex([]);
     expect(index.addresses).toBe(0);
