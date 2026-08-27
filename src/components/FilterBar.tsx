@@ -28,6 +28,7 @@ export function FilterBar({
   onReset,
   options,
   stats,
+  duplicateAddresses = 0,
   searchPlaceholder,
 }: {
   filters: FilterState;
@@ -35,6 +36,12 @@ export function FilterBar({
   onReset: () => void;
   options: Options;
   stats: Stats;
+  /**
+   * Nombre d'adresses portant plusieurs demandes, compté sur la table entière.
+   * Le filtre disparaît quand il n'y en a aucune : un choix qui ne ramène
+   * jamais rien n'a pas à occuper la barre.
+   */
+  duplicateAddresses?: number;
   searchPlaceholder: string;
 }) {
   const activeCount = countActiveFilters(filters);
@@ -124,6 +131,17 @@ export function FilterBar({
             ]}
           />
         </label>
+
+        {duplicateAddresses > 0 && (
+          <Select
+            label="Doublons"
+            value={filters.duplicates}
+            onChange={(v) => onChange({ duplicates: v as FilterState['duplicates'] })}
+          >
+            <option value="all">Tous</option>
+            <option value="only">En doublon ({duplicateAddresses})</option>
+          </Select>
+        )}
 
         {options.partners.length > 0 && (
           <Select

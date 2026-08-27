@@ -58,6 +58,7 @@ import {
   type FilterState,
   type SortState,
 } from './lib/filters';
+import { buildDuplicateIndex, groupByAddress, keepDuplicates } from './lib/duplicates';
 import type { Lead } from './lib/records';
 import { STATUS_TONE, type Status } from './lib/schema';
 import { sectorKeyOf } from './lib/territories';
@@ -179,10 +180,27 @@ export default function App() {
     [active.leads, current.from, current.to],
   );
   const options = useMemo(() => deriveOptions(active.leads), [active.leads]);
-  const filtered = useMemo(() => applyFilters(active.leads, current), [active.leads, current]);
+
+  // Doublons repérés sur la **table entière**, jamais sur la liste filtrée :
+  // restreindre d'abord masquerait le jumeau qui porte l'autre statut, c'est-à-
+  // dire le cas qu'on cherche. Le compteur du filtre en dépend aussi.
+  const duplicates = useMemo(() => buildDuplicateIndex(active.leads), [active.leads]);
+  const universe = useMemo(
+    () =>
+      current.duplicates === 'only' ? keepDuplicates(active.leads, duplicates) : active.leads,
+    [active.leads, current.duplicates, duplicates],
+  );
+
+  const filtered = useMemo(() => applyFilters(universe, current), [universe, current]);
   // Filtrage puis tri, deux étapes distinctes : les vues reçoivent le résultat
   // et n'ont rien à recalculer.
-  const sorted = useMemo(() => sortLeads(filtered, sort), [filtered, sort]);
+  const sorted = useMemo(() => {
+    const ordered = sortLeads(filtered, sort);
+    // Le regroupement s'applique **après** le tri, et seulement quand on
+    // examine les doublons : il rassemble les lignes d'une même adresse sans
+    // écraser le tri choisi, qui continue d'ordonner groupes et lignes.
+    return current.duplicates === 'only' ? groupByAddress(ordered, duplicates) : ordered;
+  }, [filtered, sort, current.duplicates, duplicates]);
 
   // Sélection tenue au-dessus des vues, sur l'ensemble **visible** : c'est ce
   // qui la fait survivre à la bascule liste/grille, et ce qui garantit qu'une
@@ -441,6 +459,7 @@ export default function App() {
           onReset={resetFilters}
           options={options}
           stats={stats}
+          duplicateAddresses={duplicates.addresses}
           searchPlaceholder="Nom, email, entreprise, ville, code postal…"
         />
 
@@ -518,6 +537,7 @@ export default function App() {
                 onOpen={setSelected}
                 onAssign={setAssigning}
                 selection={selection}
+                duplicates={duplicates}
               />
             ) : (
               <>
@@ -528,6 +548,7 @@ export default function App() {
                       lead={lead}
                       onOpen={() => setSelected(lead)}
                       onAssign={setAssigning}
+                      duplicate={duplicates.marks.get(lead.id)}
                     />
                   ))}
                 </div>

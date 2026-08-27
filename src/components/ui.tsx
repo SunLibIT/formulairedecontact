@@ -14,6 +14,7 @@
 import {
   AlertTriangle,
   ArrowRight,
+  Copy,
   Loader2,
   RefreshCw,
   Search,
@@ -34,6 +35,7 @@ import {
   type Status,
   type Tone,
 } from '../lib/schema';
+import type { DuplicateNote } from '../lib/leadActions';
 import { TONE_ACCENT, TONE_CLASS, TONE_ICON } from '../lib/tones';
 
 /* ------------------------------------------------------------------ badges */
@@ -82,6 +84,30 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
         {glyph}
       </span>
       {priority}
+    </span>
+  );
+}
+
+/**
+ * Pastille des demandes répétées d'une même adresse.
+ *
+ * Ni un statut ni une priorité : une **troisième** information, donc une
+ * troisième forme — contour discret, pas de fond coloré — pour ne pas entrer
+ * en concurrence avec les deux axes du suivi commercial. Seule la plus
+ * récente passe en teal, la couleur que la charte réserve à l'élément actif :
+ * c'est celle qu'on garde en général, et la voir d'un coup d'œil est tout
+ * l'intérêt du regroupement.
+ */
+export function DuplicateBadge({ note }: { note: DuplicateNote }) {
+  return (
+    <span
+      title={note.title}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${
+        note.latest ? 'bg-teal-soft text-teal-ink' : 'border border-line text-muted'
+      }`}
+    >
+      <Copy className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+      {note.label}
     </span>
   );
 }

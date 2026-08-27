@@ -26,11 +26,12 @@ import {
   formatPhone,
   type AgeThresholds,
 } from '../lib/format';
-import { categoryLabel } from '../lib/leadActions';
+import type { DuplicateMark } from '../lib/duplicates';
+import { categoryLabel, duplicateNote } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import { formatLocality, type Lead } from '../lib/records';
 import { TONE_CLASS } from '../lib/tones';
-import { PriorityBadge, StatusBadge } from './ui';
+import { DuplicateBadge, PriorityBadge, StatusBadge } from './ui';
 
 /**
  * Icône de catégorie. Conservée parce qu'elle porte une information — le type
@@ -54,12 +55,15 @@ export function LeadCard({
   onOpen,
   onAssign,
   thresholds = DEFAULT_AGE_THRESHOLDS,
+  duplicate,
 }: {
   lead: Lead;
   onOpen: () => void;
   /** Ouvre la modale d'assignation. Même action que dans la vue liste. */
   onAssign?: (lead: Lead) => void;
   thresholds?: AgeThresholds;
+  /** Renseigné quand l'adresse porte plusieurs demandes. */
+  duplicate?: DuplicateMark;
 }) {
 
   const days = ageInDays(lead.date);
@@ -161,13 +165,17 @@ export function LeadCard({
         <div className="mt-1.5 flex min-w-0 items-end justify-between gap-2">
           <div className="flex min-w-0 flex-col">
             {lead.email && (
-              <a
-                href={`mailto:${lead.email}`}
-                onClick={stop}
-                className="min-w-0 truncate py-1.5 text-xs text-teal-ink hover:underline"
-              >
-                {lead.email}
-              </a>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <a
+                  href={`mailto:${lead.email}`}
+                  onClick={stop}
+                  className="min-w-0 truncate py-1.5 text-xs text-teal-ink hover:underline"
+                >
+                  {lead.email}
+                </a>
+                {/* Contre l'adresse : c'est elle qui rassemble le groupe. */}
+                {duplicate && <DuplicateBadge note={duplicateNote(duplicate)} />}
+              </span>
             )}
             {lead.phone && (
               <a

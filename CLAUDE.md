@@ -56,6 +56,7 @@ Typeform ──webhook──► api/typeform-webhook ──► Airtable
 | `lib/leadActions.ts` | rules shared by both views (priority edge, category label) |
 | `lib/tones.ts` | the colour code rendered as classes, fills and icons |
 | `lib/csv.ts` | CSV serialisation, French number formats, download |
+| `lib/duplicates.ts` | spots repeat requests from one address; never merges |
 | `lib/marketingExport.ts` | derived campaign columns, dedup on email |
 | `lib/kpiExport.ts` | dashboard indicators as a long table |
 | `hooks/` | loading, staff cache, view preference, selection, dialog mechanics |
@@ -289,6 +290,29 @@ and it does not constrain what gets written.
 - The table is cached at module level like RH — 95 rows that change when the sales
   organisation changes. A load failure is swallowed on purpose: the UI loses the sector
   hint and stays usable, which beats an error banner over a secondary signal.
+
+### Duplicate requests
+
+`lib/duplicates.ts` **spots** repeat requests sharing an email address. It never merges
+and never writes — that is the whole point.
+
+- The index is built on the **entire table**, never on the filtered list. Filtering to
+  « Qualifié » and then looking for duplicates would hide the « Hors Critères » twin,
+  which is exactly the case worth seeing.
+- Real data, contact tab: **37 addresses** carry 98 rows, so 61 surplus — 31 people with
+  two requests, 2 with three, 3 with four, and one address with **18**.
+- **No automatic merge, deliberately.** On 19 of those 37 groups the statuses contradict
+  each other (« Qualifié » against « Hors Critères »), so a « keep the most recent » rule
+  would destroy a sales decision. Only a human knows which one counts. The filter groups
+  them and marks the latest; the arbitration stays manual.
+- Grouping is applied **after** sorting, so clicking a column header still reorders both
+  the groups and the rows inside them. A regrouping that overrode the sort would make the
+  headers look broken.
+- Rows with no email are never grouped together: no shared key means no evidence they are
+  the same person.
+- `DuplicateBadge` carries a third shape — outlined, no coloured fill — because status and
+  priority already own the two axes of the sales pipeline. Only the most recent request
+  goes teal.
 
 ### Colour and icons
 

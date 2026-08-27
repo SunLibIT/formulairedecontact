@@ -26,13 +26,14 @@ import {
   type AgeThresholds,
 } from '../lib/format';
 import type { SortField, SortState } from '../lib/filters';
+import type { DuplicateIndex, DuplicateMark } from '../lib/duplicates';
 import { normalisePostalCode } from '../lib/geo';
 import type { Selection } from '../hooks/useSelection';
-import { categoryLabel, priorityEdge } from '../lib/leadActions';
+import { categoryLabel, duplicateNote, priorityEdge } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
 import { TONE_CLASS } from '../lib/tones';
-import { StatusBadge } from './ui';
+import { DuplicateBadge, StatusBadge } from './ui';
 
 /** Hauteur d'une ligne, en pixels. Deux lignes de texte plus le rembourrage. */
 const ROW_HEIGHT = 56;
@@ -100,6 +101,7 @@ export function LeadList({
   onAssign,
   thresholds = DEFAULT_AGE_THRESHOLDS,
   selection,
+  duplicates,
 }: {
   leads: Lead[];
   sort: SortState;
@@ -109,6 +111,8 @@ export function LeadList({
   onAssign?: (lead: Lead) => void;
   thresholds?: AgeThresholds;
   selection?: Selection;
+  /** Index des demandes répétées, calculé sur la table entière. */
+  duplicates?: DuplicateIndex;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -236,6 +240,7 @@ export function LeadList({
                   onAssign={onAssign}
                   thresholds={thresholds}
                   selection={selection}
+                  duplicate={duplicates?.marks.get(lead.id)}
                 />
               </div>
             );
@@ -252,12 +257,14 @@ function Row({
   onAssign,
   thresholds,
   selection,
+  duplicate,
 }: {
   lead: Lead;
   onOpen: (lead: Lead) => void;
   onAssign?: (lead: Lead) => void;
   thresholds: AgeThresholds;
   selection?: Selection;
+  duplicate?: DuplicateMark;
 }) {
 
   const days = ageInDays(lead.date);
@@ -330,14 +337,18 @@ function Row({
           numéro présent il ne serait que du bruit. */}
       <div role="cell" className="min-w-0">
         {lead.email && (
-          <a
-            href={`mailto:${lead.email}`}
-            onClick={stop}
-            title={lead.email}
-            className="block min-w-0 truncate text-xs text-teal-ink hover:underline"
-          >
-            {lead.email}
-          </a>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <a
+              href={`mailto:${lead.email}`}
+              onClick={stop}
+              title={lead.email}
+              className="min-w-0 truncate text-xs text-teal-ink hover:underline"
+            >
+              {lead.email}
+            </a>
+            {/* Contre l'adresse : c'est elle qui rassemble le groupe. */}
+            {duplicate && <DuplicateBadge note={duplicateNote(duplicate)} />}
+          </span>
         )}
         {lead.phone && (
           <a

@@ -23,6 +23,16 @@ export interface FilterState {
   partner: string | typeof ALL;
   from: string;
   to: string;
+  /**
+   * Restreint aux demandes répétées d'une même adresse email.
+   *
+   * Volontairement **pas** appliqué par `applyFilters` : les doublons se
+   * détectent sur la table entière, pas sur la sous-liste filtrée. Filtrer sur
+   * « Qualifié » puis chercher les doublons masquerait le jumeau « Hors
+   * Critères », c'est-à-dire exactement le cas qu'on veut voir. Voir
+   * `lib/duplicates.ts` et son usage dans `App.tsx`.
+   */
+  duplicates: 'all' | 'only';
 }
 
 export const EMPTY_FILTERS: FilterState = {
@@ -34,6 +44,7 @@ export const EMPTY_FILTERS: FilterState = {
   partner: ALL,
   from: '',
   to: '',
+  duplicates: 'all',
 };
 
 export function countActiveFilters(f: FilterState): number {
@@ -45,6 +56,7 @@ export function countActiveFilters(f: FilterState): number {
   if (f.assignee !== ALL) n++;
   if (f.partner !== ALL) n++;
   if (f.from || f.to) n++;
+  if (f.duplicates !== 'all') n++;
   return n;
 }
 

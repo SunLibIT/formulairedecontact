@@ -11,6 +11,7 @@
  * `<article>` en grille et une ligne virtualisée n'ont pas la même structure —
  * et c'est de la présentation, pas de la logique.
  */
+import type { DuplicateMark } from './duplicates';
 import type { Lead } from './records';
 import { PRIORITY_TONE } from './schema';
 import { TONE_FILL } from './tones';
@@ -42,6 +43,33 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 export function categoryLabel(lead: Lead): string {
   return CATEGORY_LABEL[lead.category] ?? lead.category ?? '';
+}
+
+/**
+ * Mention à porter sur une demande répétée.
+ *
+ * Le compte est le même sur toutes les lignes du groupe — c'est lui qui alerte
+ * — et seule la plus récente est distinguée, parce que c'est celle qu'on garde
+ * en général. On ne numérote pas les autres : leur rang n'aide pas à décider,
+ * la date affichée à côté le fait mieux.
+ *
+ * Le libellé complet passe en `title` plutôt que dans la pastille : il porte
+ * l'adresse, qui est longue, et n'a pas à pousser le reste de la ligne.
+ */
+export interface DuplicateNote {
+  label: string;
+  /** Vrai pour la demande la plus récente de l'adresse. */
+  latest: boolean;
+  title: string;
+}
+
+export function duplicateNote(mark: DuplicateMark): DuplicateNote {
+  const total = `${mark.count} demandes de ${mark.email}`;
+  return {
+    label: `${mark.count} demandes`,
+    latest: mark.rank === 1,
+    title: mark.rank === 1 ? `La plus récente des ${total}` : `Une des ${total}`,
+  };
 }
 
 /** Vrai si personne n'est assigné, par lien ou par texte historique. */
