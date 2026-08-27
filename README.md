@@ -32,6 +32,7 @@ src/
   lib/airtable.ts   transport : pagination, upsert, reprise sur 429, proxy ou direct
   lib/records.ts    normalisation des deux tables vers un type `Lead` commun
   lib/filters.ts    filtrage, tri, compteurs — une seule implémentation
+  lib/deepLink.ts   lien de mail → demande ouverte et filtre appliqué (fonctions pures)
   hooks/useLeads.ts chargement, cache RH, rafraîchissement, garde anti-course
   components/       ui.tsx (primitives de charte), LeadCard, LeadModal, FilterBar
 api/
@@ -126,6 +127,64 @@ Deux propriétés à connaître :
 Si une question est modifiée dans Typeform, sa `ref` change et le champ arrive
 vide **sans erreur**. Toute retouche d'un formulaire impose de vérifier
 `api/_lib/typeform.ts`.
+
+## Lien profond — mail d'assignation
+
+Airtable envoie un mail quand une demande change d'assigné. Le lien qu'il porte
+ouvre l'application **sur cette demande**, fiche dépliée, la liste derrière
+étant filtrée sur les demandes du destinataire :
+
+```
+https://formulairedecontact.vercel.app/?lead=recXXXXXXXXXXXXXX&assignee=me&email=prenom@sunlib.fr
+```
+
+| Paramètre | Rôle |
+| --- | --- |
+| `lead` | identifiant d'enregistrement, tel que `RECORD_ID()` le produit |
+| `assignee` | `me` (résolu via `email`) ou un identifiant RH explicite |
+| `email` | identifie le destinataire, comme le fait Softr |
+
+Le lien **ne dit pas de quelle table vient l'enregistrement** : les deux étant
+chargées d'emblée, il est cherché dans l'une puis l'autre et l'onglet suit. Un
+mail n'a donc pas à connaître l'organisation interne, et un lien reste valable
+si une demande change de table.
+
+Les règles sont dans `lib/deepLink.ts`, en fonctions pures — `App` applique un
+plan, il ne le décide pas.
+
+### Côté Airtable
+
+1. Un champ **formule** dans la table des demandes, qui sert aussi de raccourci
+   depuis la grille :
+
+   ```
+   CONCATENATE("https://formulairedecontact.vercel.app/?lead=", RECORD_ID(), "&assignee=me&email=", {Email assigné})
+   ```
+
+   `{Email assigné}` est un **lookup** de l'email à travers le champ lié
+   `Assigné à`. Il est de toute façon nécessaire pour adresser le mail.
+
+2. Une automatisation *When record updated*, surveillant le seul champ
+   `Assigné à`, qui envoie le mail à ce même lookup en y insérant le champ
+   formule.
+
+Trois points à connaître :
+
+- **Les actions groupées déclenchent un mail par ligne.** Le tableau de bord
+  écrit par lots via `updateRecords` — réassigner 200 demandes produit 200
+  envois. Si ce n'est pas voulu, l'automatisation doit être conditionnée
+  (par exemple au seul passage d'un assigné vide à un assigné renseigné).
+- **Un lien peut survivre à sa demande.** Enregistrement supprimé, lien
+  tronqué par le client mail, identifiant d'une autre base : l'application
+  affiche « Demande introuvable » plutôt que de n'ouvrir aucune fiche sans
+  rien dire.
+- **`email` n'authentifie pas, il identifie.** C'est déjà le cas du `?email=`
+  injecté par Softr : l'application n'a pas d'authentification propre, et le
+  domaine `.vercel.app` est public — Deployment Protection doit rester
+  désactivée pour l'iframe et le webhook. Quiconque détient l'URL voit le
+  tableau de bord entier. Le lien du mail ne change donc rien à la surface
+  d'exposition, mais il la met dans une boîte de réception : à garder en tête
+  avant d'élargir la liste des destinataires.
 
 ## Reprise des données historiques
 

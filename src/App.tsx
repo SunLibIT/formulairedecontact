@@ -11,12 +11,13 @@ import {
   AlertTriangle,
   FilterX,
   Inbox,
+  Link2Off,
   RefreshCw,
   ShieldAlert,
   Trash2,
   UserX,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AssignModal } from './components/AssignModal';
 import { BulkActionBar, type BulkPatch } from './components/BulkActionBar';
 import { ExportButton } from './components/ExportButton';
@@ -38,11 +39,13 @@ import {
   Tabs,
   TopProgressBar,
 } from './components/ui';
+import { useDeepLink } from './hooks/useDeepLink';
 import { useLeads, useStaff, type LeadTable } from './hooks/useLeads';
 import { useSelection } from './hooks/useSelection';
 import { useViewPreference } from './hooks/useViewPreference';
 import { useViewer } from './hooks/useViewer';
 import { updateRecord, updateRecords, usesDirectToken } from './lib/airtable';
+import { planDeepLink } from './lib/deepLink';
 import {
   ALL,
   applyFilters,
@@ -116,6 +119,54 @@ export default function App() {
     setFilters((prev) => ({ ...prev, [tab]: EMPTY_FILTERS }));
     setVisible(PAGE);
   }, [tab]);
+
+  /* ------------------------------------------------------------ lien profond */
+
+  // `?lead=rec…` ouvre une demande, `?assignee=me` filtre sur celles du
+  // visiteur : c'est ce que porte le mail d'assignation envoyé par Airtable.
+  // Les règles sont dans `lib/deepLink` ; ici on ne fait qu'appliquer.
+  const deepLink = useDeepLink();
+
+  // Le plan ne vaut rien avant que les données soient là : sur une liste vide,
+  // tout enregistrement paraît introuvable. La table RH compte aussi, c'est
+  // elle qui traduit l'email du visiteur en identifiant.
+  const linkReady =
+    !contact.loading && !solar.loading && (staff.length > 0 || Boolean(staffError));
+
+  const plan = useMemo(
+    () =>
+      linkReady
+        ? planDeepLink({
+            link: deepLink,
+            viewerStaffId: viewer.staff?.id ?? null,
+            contact: contact.leads,
+            solar: solar.leads,
+          })
+        : null,
+    [linkReady, deepLink, viewer.staff, contact.leads, solar.leads],
+  );
+
+  // Appliqué une seule fois. Refermer la fiche, changer d'onglet ou retirer le
+  // filtre sont des gestes de l'utilisateur ; un effet qui les défait au rendu
+  // suivant rendrait l'écran inutilisable.
+  const linkApplied = useRef(false);
+  useEffect(() => {
+    if (linkApplied.current || !plan) return;
+    linkApplied.current = true;
+    if (plan.open) setSelected(plan.open);
+    if (plan.tab) setTab(plan.tab);
+    if (plan.assignee.contact || plan.assignee.solar) {
+      setFilters((prev) => ({
+        ...prev,
+        contact: plan.assignee.contact
+          ? { ...prev.contact, assignee: plan.assignee.contact }
+          : prev.contact,
+        solar: plan.assignee.solar
+          ? { ...prev.solar, assignee: plan.assignee.solar }
+          : prev.solar,
+      }));
+    }
+  }, [plan]);
 
   // Les compteurs reflètent la période choisie mais pas les autres filtres,
   // sinon filtrer sur un statut afficherait zéro partout ailleurs.
@@ -267,6 +318,16 @@ export default function App() {
         {active.error && (
           <Callout tone="danger" icon={AlertTriangle}>
             <strong>Chargement impossible.</strong> {active.error}
+          </Callout>
+        )}
+
+        {/* Un lien de mail peut survivre à la demande qu'il désigne. Sans ce
+            message, la fiche ne s'ouvrirait simplement pas, sans rien dire. */}
+        {plan?.missing && (
+          <Callout tone="amber" icon={Link2Off}>
+            <strong>Demande introuvable.</strong> Le lien ouvert désigne un
+            enregistrement absent des deux tables — il a pu être supprimé
+            depuis l'envoi du mail.
           </Callout>
         )}
 
