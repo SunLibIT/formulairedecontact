@@ -14,9 +14,19 @@
  * famille, jamais un dégradé — celui-ci est réservé à l'action principale, et
  * le cercle aux personnes.
  */
-import { ChevronDown, Lock, LogOut, ShieldCheck, ShieldX } from 'lucide-react';
+import { ChevronDown, ExternalLink, Lock, LogOut, Map, ShieldCheck, ShieldX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AdminAuth } from '../hooks/useAdminAuth';
+import { BASE_ID, TABLES } from '../lib/schema';
+
+/**
+ * La table de sectorisation dans Airtable.
+ *
+ * Construite depuis `schema.ts` et non écrite en dur : les identifiants de base
+ * et de table y ont une seule définition, et un lien codé à la main serait le
+ * premier à pointer dans le vide le jour d'un changement.
+ */
+const SECTORISATION_URL = `https://airtable.com/${BASE_ID}/${TABLES.territories}`;
 
 export function AccountButton({ auth }: { auth: AdminAuth }) {
   const [open, setOpen] = useState(false);
@@ -120,6 +130,33 @@ export function AccountButton({ auth }: { auth: AdminAuth }) {
               </p>
             )}
           </div>
+
+          {/* Accès à la donnée de référence, réservé à ceux qui peuvent déjà
+              écrire. La sectorisation s'édite dans Airtable et non ici : c'est
+              une table de référence, avec ses propres contrôles de saisie, et
+              en dupliquer l'édition ferait deux endroits où se tromper.
+
+              `noopener` est ici correct — et c'est l'inverse de la règle qui
+              vaut pour la fenêtre de connexion, où il faut surtout ne PAS le
+              mettre. La différence : cet onglet n'a rien à nous renvoyer. */}
+          {canWrite && (
+            <a
+              href={SECTORISATION_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-sm font-medium text-ink transition-colors hover:bg-canvas"
+            >
+              <Map className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+              <span className="flex-1">Sectorisation commerciale</span>
+              <ExternalLink
+                className="h-3.5 w-3.5 shrink-0 text-muted"
+                strokeWidth={2}
+                aria-hidden="true"
+              />
+            </a>
+          )}
 
           <button
             type="button"
