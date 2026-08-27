@@ -25,8 +25,9 @@
  * La suppression demande confirmation dans la ligne même, pas dans une
  * boîte de dialogue : le contexte reste visible pendant qu'on décide.
  */
-import { AlertTriangle, Check, Plus, RefreshCw, Trash2, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { AlertTriangle, Check, Map, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { useId, useMemo, useState } from 'react';
+import { useDialog } from '../hooks/useDialog';
 import { createRecord, deleteRecord, updateRecord } from '../lib/airtable';
 import type { StaffMember, Territory } from '../lib/records';
 import { REGIONS, TABLES, TERRITORY } from '../lib/schema';
@@ -43,6 +44,76 @@ interface Props {
   onRefresh: () => Promise<void> | void;
   /** Faux en lecture seule : la page reste consultable, sans contrôles. */
   canWrite: boolean;
+}
+
+/**
+ * La sectorisation en boîte de dialogue, presque plein écran.
+ *
+ * Elle n'a plus d'onglet à elle : on l'ouvre depuis le menu du compte. C'est
+ * cohérent avec ce qu'elle est — un réglage d'administration, consulté de temps
+ * en temps, pas une des trois vues de travail quotidiennes. Un quatrième onglet
+ * la mettait au même rang que les demandes et les KPI.
+ *
+ * Presque plein écran et non plein écran : l'arrière-plan reste visible sur ses
+ * bords, ce qui rappelle qu'on est dans une couche au-dessus et que `Échap`
+ * ramène au travail en cours. La mécanique — piège de focus, restitution,
+ * `Échap`, défilement bloqué derrière — vient de `useDialog`, comme les autres
+ * modales : dupliquer un piège de focus est le plus sûr moyen d'en avoir deux
+ * qui diffèrent, dont un cassé.
+ */
+export function SectorModal({ onClose, ...panel }: Props & { onClose: () => void }) {
+  const dialogRef = useDialog(onClose);
+  const titleId = useId();
+
+  return (
+    <div
+      className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="modal-panel flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-card bg-surface sm:rounded-card"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+          <div className="flex items-start gap-3">
+            <span
+              aria-hidden="true"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-teal-soft text-teal-ink"
+            >
+              <Map className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <div>
+              <h2 id={titleId} className="text-lg font-bold text-ink">
+                Sectorisation commerciale
+              </h2>
+              <p className="text-sm text-muted">
+                Un département, un commercial. Cette table oriente les listes
+                d&apos;assignation.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer"
+            className="shrink-0 rounded-control p-1.5 text-muted transition-colors hover:bg-canvas hover:text-ink"
+          >
+            <X className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <SectorPanel {...panel} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Ce qu'une ligne en cours d'écriture affiche. */

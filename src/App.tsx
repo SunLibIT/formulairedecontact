@@ -29,7 +29,7 @@ import { LeadList } from './components/LeadList';
 import { LeadModal } from './components/LeadModal';
 import { MergeModal } from './components/MergeModal';
 import { PeriodFilter } from './components/PeriodFilter';
-import { SectorPanel } from './components/SectorPanel';
+import { SectorModal } from './components/SectorPanel';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import {
   Callout,
@@ -73,13 +73,12 @@ import { WRITE_TARGET } from './lib/writeTargets';
 const PAGE = 60;
 
 /** Les deux listes, plus le tableau de bord. */
-type View = LeadTable | 'kpi' | 'sectors';
+type View = LeadTable | 'kpi';
 
 const TAB_LABEL: Record<View, string> = {
   contact: 'Demandes de contact',
   solar: 'Leads simulateur',
   kpi: 'KPI',
-  sectors: 'Sectorisation',
 };
 
 export default function App() {
@@ -103,6 +102,8 @@ export default function App() {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [assigning, setAssigning] = useState<Lead | null>(null);
   const [merging, setMerging] = useState<MergePlan | null>(null);
+  // Sectorisation : une couche au-dessus, ouverte depuis le menu du compte.
+  const [sectorsOpen, setSectorsOpen] = useState(false);
 
   // Les deux tables sont chargées d'emblée : elles totalisent moins de 800
   // enregistrements, ce qui rend les compteurs d'onglets exacts et le
@@ -117,9 +118,6 @@ export default function App() {
     contact: EMPTY_FILTERS,
     solar: EMPTY_FILTERS,
     kpi: EMPTY_FILTERS,
-    // La sectorisation n'a ni période ni statut : elle porte sa propre
-    // recherche. L'entrée existe pour que `filters[tab]` reste total.
-    sectors: EMPTY_FILTERS,
   });
   const [visible, setVisible] = useState(PAGE);
   // Le tri vit au-dessus des vues : il est conservé quand on bascule.
@@ -401,7 +399,7 @@ export default function App() {
             </SecondaryButton>
             {/* Seul point de connexion de l'application. Invisible tant que le
                 serveur n'exige pas de session. */}
-            <AccountButton auth={auth} />
+            <AccountButton auth={auth} onOpenSectors={() => setSectorsOpen(true)} />
           </div>
         </div>
       </header>
@@ -451,20 +449,10 @@ export default function App() {
             { id: 'contact', label: TAB_LABEL.contact, count: contact.leads.length },
             { id: 'solar', label: TAB_LABEL.solar, count: solar.leads.length },
             { id: 'kpi', label: TAB_LABEL.kpi },
-            { id: 'sectors', label: TAB_LABEL.sectors, count: territories.length },
           ]}
         />
 
-        {tab === 'sectors' ? (
-          <SectorPanel
-            territories={territories}
-            staff={staff}
-            loading={territoriesLoading}
-            error={territoriesError}
-            onRefresh={refreshTerritories}
-            canWrite={auth.canWrite}
-          />
-        ) : tab === 'kpi' ? (
+        {tab === 'kpi' ? (
           <>
             {/* Le total n'est pas passé : le panneau l'affiche déjà, calculé
                 sur sa propre sélection de source. */}
@@ -678,6 +666,20 @@ export default function App() {
           plan={merging}
           onClose={() => setMerging(null)}
           onMerge={applyMerge}
+        />
+      )}
+
+      {/* Sectorisation : ouverte depuis le menu du compte, jamais depuis un
+          onglet. C'est un réglage d'administration, pas une vue de travail. */}
+      {sectorsOpen && (
+        <SectorModal
+          territories={territories}
+          staff={staff}
+          loading={territoriesLoading}
+          error={territoriesError}
+          onRefresh={refreshTerritories}
+          canWrite={auth.canWrite}
+          onClose={() => setSectorsOpen(false)}
         />
       )}
 

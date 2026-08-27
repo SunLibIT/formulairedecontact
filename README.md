@@ -283,10 +283,16 @@ l'expiration, donc très coûteuse à diagnostiquer.
 
 ## Sectorisation commerciale — la page d'administration
 
-Onglet « Sectorisation ». Une ligne par département français, son commercial,
-sa région, sa case « Actif ». C'est cette table qui oriente les listes
+Ouverte depuis le **menu du compte**, en boîte de dialogue presque plein
+écran. Pas d'onglet à elle : c'est un réglage d'administration, consulté de
+temps en temps, et un quatrième onglet l'aurait mise au même rang que les
+demandes et les KPI. Une ligne par département français, son commercial, sa
+région, sa case « Actif ». C'est cette table qui oriente les listes
 d'assignation : la modifier change immédiatement ce que voient les autres
-onglets.
+vues.
+
+La mécanique de la boîte — piège de focus, restitution, Échap, défilement
+bloqué derrière — vient de `useDialog`, comme les autres modales.
 
 Quatre partis pris, tous pour la même raison — une table de référence se relit
 constamment et ne se modifie qu'à la marge :
