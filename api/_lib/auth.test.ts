@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PATCH as airtablePatch, GET as airtableGet } from '../airtable';
+import {
+  DELETE as airtableDelete,
+  GET as airtableGet,
+  PATCH as airtablePatch,
+  POST as airtablePost,
+} from '../airtable';
 import { GET as authGet } from '../auth';
 import {
   googleAuthEnabled,
@@ -371,5 +376,87 @@ describe('GET /api/auth — retour de Google', () => {
     expect(res.status).toBe(200);
     // La porte doit pouvoir être interrogée avant toute connexion, et sans email.
     expect(await res.json()).toMatchObject({ googleAuth: false });
+  });
+});
+
+/**
+ * Création et suppression, ouvertes pour la page de sectorisation.
+ *
+ * Elles comptent autant que le PATCH : une méthode ajoutée sans sa garde est
+ * une porte ouverte, et le client ne masque ses boutons que par courtoisie.
+ */
+describe('POST et DELETE /api/airtable', () => {
+  const TERRITORY_TABLE = 'tblw11IuaIggSkNu5';
+
+  function createRequest(headers: Record<string, string> = {}): Request {
+    return new Request(`https://exemple.test/api/airtable?table=${TERRITORY_TABLE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ fields: { flds31Paku304s0Z6: '33' } }),
+    });
+  }
+
+  function deleteRequest(headers: Record<string, string> = {}): Request {
+    return new Request(
+      `https://exemple.test/api/airtable?table=${TERRITORY_TABLE}&record=${RECORD}`,
+      { method: 'DELETE', headers },
+    );
+  }
+
+  it('refuse une création sans jeton', async () => {
+    enableGoogle();
+    const { calls } = stubNetwork({ staff: {} });
+    const res = await airtablePost(createRequest());
+    expect(res.status).toBe(403);
+    expect(calls.filter((c) => c.startsWith('https://api.airtable.com/'))).toHaveLength(0);
+  });
+
+  it('refuse une suppression sans jeton', async () => {
+    enableGoogle();
+    const { calls } = stubNetwork({ staff: {} });
+    const res = await airtableDelete(deleteRequest());
+    expect(res.status).toBe(403);
+    // Le point important : rien n'a été supprimé avant le refus.
+    expect(calls.filter((c) => c.startsWith('https://api.airtable.com/'))).toHaveLength(0);
+  });
+
+  it('accepte création et suppression avec un jeton valide', async () => {
+    enableGoogle();
+    stubNetwork({ staff: {} });
+    const token = signSessionToken({ email: 'camille@sunlib.fr', name: 'Camille' });
+    const created = await airtablePost(createRequest({ Authorization: `Bearer ${token}` }));
+    expect(created.status).toBe(200);
+    const deleted = await airtableDelete(deleteRequest({ Authorization: `Bearer ${token}` }));
+    expect(deleted.status).toBe(200);
+  });
+
+  it('refuse une suppression demandée par un collaborateur désactivé', async () => {
+    enableGoogle();
+    stubNetwork({ staff: { inactive: true } });
+    const token = signSessionToken({ email: 'olivier@sunlib.fr', name: 'Olivier' });
+    const res = await airtableDelete(deleteRequest({ Authorization: `Bearer ${token}` }));
+    expect(res.status).toBe(403);
+  });
+
+  it('laisse tout passer sous le régime historique', async () => {
+    disableGoogle();
+    const { calls } = stubNetwork({ staff: {} });
+    const res = await airtablePost(createRequest());
+    expect(res.status).toBe(200);
+    expect(calls.some((c) => c.startsWith('https://api.airtable.com/'))).toBe(true);
+  });
+
+  it('refuse une table hors périmètre, jeton valide ou non', async () => {
+    enableGoogle();
+    stubNetwork({ staff: {} });
+    const token = signSessionToken({ email: 'camille@sunlib.fr', name: 'Camille' });
+    const res = await airtableDelete(
+      new Request(
+        `https://exemple.test/api/airtable?table=tblINCONNUE12345&record=${RECORD}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+      ),
+    );
+    // Une session valide n'élargit pas le périmètre des tables joignables.
+    expect(res.status).toBe(403);
   });
 });

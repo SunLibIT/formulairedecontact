@@ -171,6 +171,37 @@ export async function updateRecord(
   );
 }
 
+/**
+ * Crée un enregistrement.
+ *
+ * `typecast` reste absent, comme partout : une option de liste inconnue doit
+ * échouer bruyamment plutôt que d'être créée en silence. C'est ainsi que la
+ * table héritée s'était retrouvée avec ~170 options `Statut` parasites.
+ */
+export async function createRecord(
+  tableId: string,
+  fields: Record<string, unknown>,
+): Promise<AirtableRecord> {
+  const params = new URLSearchParams({ returnFieldsByFieldId: 'true' });
+  return request<AirtableRecord>(
+    tableId,
+    { method: 'POST', body: JSON.stringify({ fields }) },
+    params,
+  );
+}
+
+/**
+ * Supprime un enregistrement.
+ *
+ * N'existe que pour la sectorisation. Ailleurs, rien ne se supprime : une
+ * demande se classe « Archivé », jamais effacée.
+ */
+export async function deleteRecord(tableId: string, recordId: string): Promise<void> {
+  await request<{ deleted: boolean; id: string }>(`${tableId}/${recordId}`, {
+    method: 'DELETE',
+  });
+}
+
 export interface BulkProgress {
   /** Enregistrements effectivement écrits. */
   updated: number;

@@ -29,6 +29,7 @@ import { LeadList } from './components/LeadList';
 import { LeadModal } from './components/LeadModal';
 import { MergeModal } from './components/MergeModal';
 import { PeriodFilter } from './components/PeriodFilter';
+import { SectorPanel } from './components/SectorPanel';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import {
   Callout,
@@ -72,19 +73,27 @@ import { WRITE_TARGET } from './lib/writeTargets';
 const PAGE = 60;
 
 /** Les deux listes, plus le tableau de bord. */
-type View = LeadTable | 'kpi';
+type View = LeadTable | 'kpi' | 'sectors';
 
 const TAB_LABEL: Record<View, string> = {
   contact: 'Demandes de contact',
   solar: 'Leads simulateur',
   kpi: 'KPI',
+  sectors: 'Sectorisation',
 };
 
 export default function App() {
   const { staff, byId, error: staffError } = useStaff();
   // Sectorisation commerciale : oriente les listes de collaborateurs vers le
   // commercial du département de la demande. Absente, tout reste utilisable.
-  const { sectors, coverage } = useTerritories();
+  const {
+    territories,
+    sectors,
+    coverage,
+    loading: territoriesLoading,
+    error: territoriesError,
+    refresh: refreshTerritories,
+  } = useTerritories();
   // Identité transmise par l'hôte Softr : conditionne l'action « M'assigner ».
   const viewer = useViewer(staff);
   // Session d'écriture. Sous le régime historique — variables Google absentes —
@@ -108,6 +117,9 @@ export default function App() {
     contact: EMPTY_FILTERS,
     solar: EMPTY_FILTERS,
     kpi: EMPTY_FILTERS,
+    // La sectorisation n'a ni période ni statut : elle porte sa propre
+    // recherche. L'entrée existe pour que `filters[tab]` reste total.
+    sectors: EMPTY_FILTERS,
   });
   const [visible, setVisible] = useState(PAGE);
   // Le tri vit au-dessus des vues : il est conservé quand on bascule.
@@ -439,10 +451,20 @@ export default function App() {
             { id: 'contact', label: TAB_LABEL.contact, count: contact.leads.length },
             { id: 'solar', label: TAB_LABEL.solar, count: solar.leads.length },
             { id: 'kpi', label: TAB_LABEL.kpi },
+            { id: 'sectors', label: TAB_LABEL.sectors, count: territories.length },
           ]}
         />
 
-        {tab === 'kpi' ? (
+        {tab === 'sectors' ? (
+          <SectorPanel
+            territories={territories}
+            staff={staff}
+            loading={territoriesLoading}
+            error={territoriesError}
+            onRefresh={refreshTerritories}
+            canWrite={auth.canWrite}
+          />
+        ) : tab === 'kpi' ? (
           <>
             {/* Le total n'est pas passé : le panneau l'affiche déjà, calculé
                 sur sa propre sélection de source. */}

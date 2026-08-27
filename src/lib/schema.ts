@@ -129,6 +129,38 @@ export const TERRITORY = {
   active: 'fld9l52OdNgb85eQ0',
 } as const;
 
+/**
+ * Régions de la table « Sectorisation commerciale », à l'accent près.
+ *
+ * Les écritures se font avec `typecast: false` : un libellé qui ne correspond
+ * pas exactement à une option existante fait échouer la requête au lieu de
+ * créer une option de plus. C'est voulu — c'est ainsi que la table héritée
+ * s'était retrouvée avec ~170 options `Statut` parasites, horodatages compris.
+ *
+ * Métropole seule : les DOM ne sont pas sectorisés, et un code postal 971…978
+ * ne se rapproche d'aucune ligne.
+ */
+export const REGIONS = [
+  'Auvergne-Rhône-Alpes',
+  'Bourgogne-Franche-Comté',
+  'Bretagne',
+  'Centre-Val de Loire',
+  'Corse',
+  'Grand Est',
+  'Hauts-de-France',
+  'Île-de-France',
+  'Normandie',
+  'Nouvelle-Aquitaine',
+  'Occitanie',
+  'Pays de la Loire',
+  // Apostrophe DROITE (U+0027), telle qu'elle est dans Airtable. Une
+  // apostrophe typographique (’) ferait échouer l'écriture : les libellés sont
+  // comparés caractère pour caractère.
+  "Provence-Alpes-Côte d'Azur",
+] as const;
+
+export type Region = (typeof REGIONS)[number];
+
 /** Champs de la table « RH ». */
 export const STAFF = {
   name: 'fldELWYPe8utsKKcV',

@@ -91,15 +91,17 @@ async function proxy(req: Request): Promise<Response> {
     if (ALLOWED_PARAMS.has(key)) target.searchParams.append(key, value);
   }
 
+  const sendsBody = req.method === 'PATCH' || req.method === 'POST';
+
   const init: RequestInit = {
     method: req.method,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(req.method === 'PATCH' ? { 'Content-Type': 'application/json' } : {}),
+      ...(sendsBody ? { 'Content-Type': 'application/json' } : {}),
     },
   };
 
-  if (req.method === 'PATCH') {
+  if (sendsBody) {
     const body = await req.text();
     if (body.length > 1_000_000) {
       return json({ error: { message: 'Charge utile trop volumineuse.' } }, 413);
@@ -155,17 +157,15 @@ export async function GET(req: Request): Promise<Response> {
 }
 
 /**
- * Écriture — sous condition d'identité prouvée.
+ * Toute écriture passe par ici — sous condition d'identité prouvée.
  *
- * C'est le SEUL point d'écriture ouvert au navigateur : toutes les
- * modifications de l'application (statut, priorité, assignation, notes, actions
- * groupées) passent par ce PATCH. `api/typeform-webhook.ts` écrit aussi, mais il
- * s'authentifie par signature HMAC de Typeform et ne relève pas d'un
- * utilisateur : il n'est donc pas concerné.
- *
- * Le client masque ses boutons par courtoisie. C'est ici que le refus a lieu.
+ * Les trois méthodes partagent la même garde, et c'est le point : ajouter une
+ * méthode sans ajouter la garde serait une porte ouverte, alors que le client
+ * ne masque ses boutons que par courtoisie. `api/typeform-webhook.ts` écrit
+ * aussi, mais s'authentifie par signature HMAC de Typeform et ne relève pas
+ * d'un utilisateur : il n'est pas concerné.
  */
-export async function PATCH(req: Request): Promise<Response> {
+async function guardedProxy(req: Request): Promise<Response> {
   const check = await requireWriter(req);
   if (!check.ok) {
     return json(
@@ -174,6 +174,30 @@ export async function PATCH(req: Request): Promise<Response> {
     );
   }
   return proxy(req);
+}
+
+/** Modification : statut, priorité, assignation, notes, actions groupées. */
+export function PATCH(req: Request): Promise<Response> {
+  return guardedProxy(req);
+}
+
+/**
+ * Création. Ouvert pour la page de sectorisation, qui a besoin d'ajouter une
+ * ligne de département — les autres écrans ne créent rien.
+ */
+export function POST(req: Request): Promise<Response> {
+  return guardedProxy(req);
+}
+
+/**
+ * Suppression.
+ *
+ * Réservée à la sectorisation, où une ligne de département peut être retirée.
+ * Ailleurs, rien ne se supprime : une demande de contact se classe « Archivé »,
+ * jamais effacée — l'historique commercial ne se reconstitue pas.
+ */
+export function DELETE(req: Request): Promise<Response> {
+  return guardedProxy(req);
 }
 
 /** Exporté pour les tests : dit si le régime Google est armé côté serveur. */

@@ -34,6 +34,7 @@ src/
   lib/filters.ts    filtrage, tri, compteurs — une seule implémentation
   lib/deepLink.ts   lien de mail → demande ouverte et filtre appliqué (fonctions pures)
   lib/adminAuth.ts  session d'écriture : jeton, authFetch, fenêtre de connexion
+  lib/territories.ts sectorisation : index département → commercial, régions
   hooks/useLeads.ts chargement, cache RH, rafraîchissement, garde anti-course
   components/       ui.tsx (primitives de charte), LeadCard, LeadModal, FilterBar
 api/
@@ -279,6 +280,58 @@ qu'il détient un jeton. Sans elles, le jour où un cache apparaîtrait, une
 réponse anonyme resservie à une requête authentifiée afficherait « lecture
 seule » avec une session valide — une panne qui se corrige toute seule à
 l'expiration, donc très coûteuse à diagnostiquer.
+
+## Sectorisation commerciale — la page d'administration
+
+Onglet « Sectorisation ». Une ligne par département français, son commercial,
+sa région, sa case « Actif ». C'est cette table qui oriente les listes
+d'assignation : la modifier change immédiatement ce que voient les autres
+onglets.
+
+Quatre partis pris, tous pour la même raison — une table de référence se relit
+constamment et ne se modifie qu'à la marge :
+
+- **Édition inline et immédiate**, sans mode brouillon. Sur 95 lignes dont on
+  ne touche qu'une ou deux, un formulaire global ferait porter le risque de
+  perte sur l'ensemble.
+- **Écriture optimiste avec retour en arrière.** La cellule affiche la nouvelle
+  valeur tout de suite et reprend l'ancienne si Airtable refuse, en montrant
+  son message tel quel : « unknown field name » ou une option de liste inconnue
+  en disent plus long qu'un « échec » générique.
+- **Le code département ne s'édite pas** après création. C'est la clé de
+  rapprochement avec les demandes ; la changer déplacerait silencieusement tout
+  un secteur. Pour le corriger, on supprime et on recrée — le geste devient
+  explicite.
+- **La confirmation de suppression est dans la ligne**, pas dans une boîte de
+  dialogue : le contexte reste visible pendant qu'on décide.
+
+Le code est vérifié avant l'appel — deux caractères, zéro initial compris, et
+pas déjà pris. Airtable accepterait un doublon sans broncher, et deux lignes
+pour le même département fusionneraient leurs commerciaux dans l'index : un
+secteur se retrouverait avec deux titulaires sans que personne l'ait décidé.
+
+Le compteur signale les lignes **sans commercial** : c'est le défaut le plus
+coûteux de cette table, puisqu'une demande tombant dans ce département ne se
+rapproche de personne, et rien d'autre ne le montre.
+
+`REGIONS` est dans `schema.ts`, à l'accent et à l'apostrophe près — apostrophe
+DROITE dans « Provence-Alpes-Côte d'Azur ». Les écritures partent avec
+`typecast: false`, donc un libellé approchant fait échouer la requête au lieu
+de créer une quatorzième région.
+
+### Deux conséquences ailleurs
+
+**Le proxy accepte désormais POST et DELETE**, en plus de GET et PATCH. Les
+trois méthodes d'écriture partagent la même garde `requireWriter` — une méthode
+ajoutée sans sa garde serait une porte ouverte, et le client ne masque ses
+boutons que par courtoisie. La suppression n'existe que pour cette table :
+ailleurs rien ne s'efface, une demande se classe « Archivé ».
+
+**Le cache de sectorisation s'invalide.** Il ne le faisait pas, ce qui était
+sans conséquence tant que la table était en lecture seule ; depuis cette page,
+un cache figé montrerait indéfiniment l'état d'avant la modification, y compris
+dans les listes d'assignation des autres onglets. `refresh` le vide avant de
+recharger.
 
 ## Reprise des données historiques
 

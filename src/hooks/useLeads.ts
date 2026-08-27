@@ -111,15 +111,44 @@ function loadTerritories(): Promise<Territory[]> {
  * chargement par session suffit. Un échec n'est pas remonté à l'appelant —
  * l'interface perd la mise en avant du secteur et reste utilisable, ce qui vaut
  * mieux qu'un bandeau d'erreur sur une information d'appoint.
+ *
+ * `refresh` vide le cache **avant** de recharger, ce qui n'était pas nécessaire
+ * tant que la sectorisation était en lecture seule : depuis que la page
+ * d'administration l'édite, un cache figé montrerait indéfiniment l'état
+ * d'avant la modification, y compris dans les listes d'assignation.
  */
 export function useTerritories() {
   const [territories, setTerritories] = useState<Territory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async (force = false) => {
+    if (force) territoriesCache = null;
+    setLoading(true);
+    try {
+      const rows = await loadTerritories();
+      setTerritories(rows);
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Chargement impossible');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let alive = true;
     loadTerritories()
-      .then((t) => alive && setTerritories(t))
-      .catch(() => {});
+      .then((t) => {
+        if (!alive) return;
+        setTerritories(t);
+        setLoading(false);
+      })
+      .catch((e: Error) => {
+        if (!alive) return;
+        setError(e.message);
+        setLoading(false);
+      });
     return () => {
       alive = false;
     };
@@ -128,7 +157,9 @@ export function useTerritories() {
   const sectors = useMemo(() => buildSectorIndex(territories), [territories]);
   const coverage = useMemo(() => coverageByStaff(territories), [territories]);
 
-  return { territories, sectors, coverage };
+  const refresh = useCallback(() => load(true), [load]);
+
+  return { territories, sectors, coverage, loading, error, refresh };
 }
 
 /* ------------------------------------------------------------------- leads */
