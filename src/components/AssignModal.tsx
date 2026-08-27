@@ -25,6 +25,7 @@ import {
   sectorForLead,
   sectorKeyOf,
   staffOptionsFor,
+  type CoverageIndex,
   type SectorIndex,
 } from '../lib/territories';
 import { SearchableSelect } from './SearchableSelect';
@@ -46,7 +47,7 @@ export function AssignModal({
   /** Sectorisation commerciale. Vide tant qu'elle n'est pas chargée. */
   sectors: SectorIndex;
   /** Départements couverts par collaborateur, pour situer chaque ligne. */
-  coverage: ReadonlyMap<string, string[]>;
+  coverage: CoverageIndex;
   onClose: () => void;
   /** Écrit l'assignation. `null` la retire. */
   onAssign: (lead: Lead, staffId: string | null) => Promise<void>;

@@ -18,7 +18,7 @@ import {
   type Priority,
   type Status,
 } from '../lib/schema';
-import { staffOptionsFor, type Sector } from '../lib/territories';
+import { staffOptionsFor, type CoverageIndex, type Sector } from '../lib/territories';
 import { SearchableSelect } from './SearchableSelect';
 import { SecondaryButton } from './ui';
 
@@ -54,7 +54,7 @@ export function BulkActionBar({
    */
   sector: Sector | null;
   /** Départements couverts par collaborateur. */
-  coverage: ReadonlyMap<string, string[]>;
+  coverage: CoverageIndex;
   /** Applique la modification. `signal` permet l'interruption. */
   onApply: (
     patch: BulkPatch,

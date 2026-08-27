@@ -100,35 +100,101 @@ export function sectorForLead(lead: Lead, index: SectorIndex): Sector | null {
 }
 
 /**
- * Départements couverts par chaque collaborateur, triés.
+ * Territoire d'un collaborateur, dans ses deux échelles.
+ *
+ * Les deux sont conservées parce qu'elles ne servent pas à la même chose : la
+ * **région** se lit, le **département** se rapproche. Un commercial en couvre
+ * une douzaine — « 01, 03, 07 +9 » ne dit rien à personne, là où
+ * « Auvergne-Rhône-Alpes » situe immédiatement.
+ */
+export interface StaffCoverage {
+  /** Codes départements couverts, triés. Sert la recherche et le rapprochement. */
+  codes: string[];
+  /**
+   * Régions couvertes, sans doublon, **de la plus fournie à la moins fournie**.
+   *
+   * Cet ordre-là et pas l'alphabet, parce que l'affichage est tronqué : Ilan
+   * couvre Centre-Val de Loire (6 départements), Hauts-de-France (5) et
+   * Île-de-France (8). Par ordre alphabétique, la troncature à deux régions
+   * masquerait justement l'Île-de-France — la principale. À nombre égal, on
+   * retombe sur l'alphabet français.
+   */
+  regions: string[];
+}
+
+export type CoverageIndex = ReadonlyMap<string, StaffCoverage>;
+
+/**
+ * Territoire couvert par chaque collaborateur.
  *
  * Sert de complément d'information dans les listes de collaborateurs, où le
  * service (« Commercial ») ne dit rien du territoire.
  */
-export function coverageByStaff(territories: Territory[]): ReadonlyMap<string, string[]> {
-  const byStaff = new Map<string, string[]>();
+export function coverageByStaff(territories: Territory[]): CoverageIndex {
+  const codesByStaff = new Map<string, Set<string>>();
+  // Compté, et pas seulement collecté : c'est ce nombre qui ordonne les
+  // régions, donc ce que la troncature d'affichage conserve.
+  const regionWeight = new Map<string, Map<string, number>>();
 
   for (const t of territories) {
     if (!t.active) continue;
     const key = sectorKey(t.code);
     if (!key) continue;
+    const region = t.region.trim();
+
     for (const id of t.staffIds) {
-      const codes = byStaff.get(id);
-      if (!codes) byStaff.set(id, [key]);
-      else if (!codes.includes(key)) codes.push(key);
+      let codes = codesByStaff.get(id);
+      if (!codes) {
+        codes = new Set();
+        codesByStaff.set(id, codes);
+      }
+      // `Set` plutôt qu'un `includes` : deux lignes peuvent partager une clé,
+      // la Corse par exemple si 2A et 2B y étaient saisis séparément.
+      const isNewCode = !codes.has(key);
+      codes.add(key);
+
+      if (!region || !isNewCode) continue;
+      let weights = regionWeight.get(id);
+      if (!weights) {
+        weights = new Map();
+        regionWeight.set(id, weights);
+      }
+      weights.set(region, (weights.get(region) ?? 0) + 1);
     }
   }
 
-  for (const codes of byStaff.values()) codes.sort();
+  const collator = new Intl.Collator('fr');
+  const byStaff = new Map<string, StaffCoverage>();
+  for (const [id, codes] of codesByStaff) {
+    const weights = regionWeight.get(id) ?? new Map<string, number>();
+    const regions = [...weights.entries()]
+      .sort((a, b) => b[1] - a[1] || collator.compare(a[0], b[0]))
+      .map(([region]) => region);
+    byStaff.set(id, { codes: [...codes].sort(), regions });
+  }
   return byStaff;
 }
 
 /**
- * Résumé des départements d'un commercial — « 33, 40, 47 », abrégé au-delà de
- * quatre codes pour ne pas déborder d'une ligne de liste déroulante.
+ * Résumé du territoire d'un commercial, pour une ligne de liste déroulante.
+ *
+ * Les **régions** d'abord : c'est l'échelle que l'on reconnaît sans réfléchir.
+ * Deux au plus, le reste compté — les commerciaux en couvrent deux ou trois, et
+ * une ligne de liste n'a pas la place d'en afficher davantage.
+ *
+ * Les codes départements ne servent de repli que si la région manque, ce qui
+ * n'arrive que sur une ligne de sectorisation incomplète. Ils restent
+ * interrogeables par la recherche, qui lit le champ complet.
  */
-export function formatCoverage(codes: readonly string[] | undefined): string {
-  if (!codes?.length) return '';
+export function formatCoverage(coverage: StaffCoverage | undefined): string {
+  const regions = coverage?.regions ?? [];
+  if (regions.length) {
+    if (regions.length <= 2) return regions.join(', ');
+    return `${regions.slice(0, 2).join(', ')} +${regions.length - 2}`;
+  }
+
+  const codes = coverage?.codes ?? [];
+  if (!codes.length) return '';
   if (codes.length <= 4) return codes.join(', ');
   return `${codes.slice(0, 3).join(', ')} +${codes.length - 3}`;
 }
@@ -157,17 +223,20 @@ export interface StaffOption {
 export function staffOptionsFor(
   staff: StaffMember[],
   sector: Sector | null,
-  coverage: ReadonlyMap<string, string[]>,
+  coverage: CoverageIndex,
 ): StaffOption[] {
   return staff.map((s) => {
     const inSector = Boolean(sector?.staffIds.includes(s.id));
-    const codes = formatCoverage(coverage.get(s.id));
+    const territory = formatCoverage(coverage.get(s.id));
     return {
       value: s.id,
       label: s.name,
-      // Le secteur remplace le service dans le complément : dans une modale
-      // d'assignation, « couvre le 33 » informe plus que « Commercial ».
-      hint: inSector ? `Secteur ${sector?.code}` : codes || s.group,
+      // Le territoire remplace le service dans le complément : dans une modale
+      // d'assignation, « Nouvelle-Aquitaine » informe plus que « Commercial ».
+      // Le commercial du secteur garde sa mention propre — c'est le signal le
+      // plus fort de la liste, et il ne doit dépendre d'aucun regroupement,
+      // que tous les appelants ne demandent pas.
+      hint: inSector ? `Secteur ${sector?.code}` : territory || s.group,
       pinned: inSector,
     };
   });

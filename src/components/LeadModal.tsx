@@ -48,7 +48,12 @@ import {
   type Priority,
   type Status,
 } from '../lib/schema';
-import { sectorForLead, staffOptionsFor, type SectorIndex } from '../lib/territories';
+import {
+  sectorForLead,
+  staffOptionsFor,
+  type CoverageIndex,
+  type SectorIndex,
+} from '../lib/territories';
 import { TONE_CLASS } from '../lib/tones';
 import { WRITE_TARGET } from '../lib/writeTargets';
 import { SearchableSelect } from './SearchableSelect';
@@ -60,7 +65,7 @@ interface Props {
   /** Sectorisation commerciale. Vide tant qu'elle n'est pas chargée. */
   sectors: SectorIndex;
   /** Départements couverts par collaborateur. */
-  coverage: ReadonlyMap<string, string[]>;
+  coverage: CoverageIndex;
   onClose: () => void;
   /** Applique le changement dans la liste sans rechargement complet. */
   onSaved: (patch: Partial<Lead>) => void;
