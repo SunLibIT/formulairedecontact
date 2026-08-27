@@ -281,7 +281,7 @@ réponse anonyme resservie à une requête authentifiée afficherait « lecture
 seule » avec une session valide — une panne qui se corrige toute seule à
 l'expiration, donc très coûteuse à diagnostiquer.
 
-## Sectorisation commerciale — la page d'administration
+## Sectorisation commerciale — l'écran d'administration
 
 Ouverte depuis le **menu du compte**, en boîte de dialogue presque plein
 écran. Pas d'onglet à elle : c'est un réglage d'administration, consulté de
