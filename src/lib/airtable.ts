@@ -13,6 +13,7 @@
  * réponses demandées avec `returnFieldsByFieldId`, pour que renommer un champ
  * dans Airtable n'ait aucun effet sur le code.
  */
+import { authFetch } from './adminAuth';
 import { BASE_ID } from './schema';
 
 const DIRECT_TOKEN = import.meta.env.VITE_AIRTABLE_TOKEN as string | undefined;
@@ -87,7 +88,12 @@ async function request<T>(
   if (DIRECT_TOKEN) headers.Authorization = `Bearer ${DIRECT_TOKEN}`;
   if (init.body) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(buildUrl(path, params), { ...init, headers });
+  // En mode proxy, `authFetch` joint le jeton de session à toute requête —
+  // écritures groupées comprises, puisque ce point de passage est unique. En
+  // mode direct il faut l'éviter : l'en-tête `Authorization` y porte le token
+  // Airtable, qu'un jeton de session écraserait.
+  const send = DIRECT_TOKEN ? fetch : authFetch;
+  const res = await send(buildUrl(path, params), { ...init, headers });
 
   if (res.status === 429) {
     // Le plafond de débit est atteint : une seule reprise, après la fenêtre.

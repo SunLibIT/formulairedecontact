@@ -76,6 +76,8 @@ export const CONTACT = {
  */
 export const FIELD_NAMES = {
   contactResponseId: 'Response ID',
+  /** Requis par `api/_lib/auth.ts` pour retrouver un collaborateur par email. */
+  staffEmail: 'Email',
 } as const;
 
 /** Champs de la table « Leads Solaires ». */

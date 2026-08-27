@@ -18,6 +18,7 @@ import {
   UserX,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccountButton } from './components/AccountButton';
 import { AssignModal } from './components/AssignModal';
 import { BulkActionBar, type BulkPatch } from './components/BulkActionBar';
 import { ExportButton } from './components/ExportButton';
@@ -40,6 +41,7 @@ import {
   Tabs,
   TopProgressBar,
 } from './components/ui';
+import { useAdminAuth } from './hooks/useAdminAuth';
 import { useDeepLink } from './hooks/useDeepLink';
 import { useLeads, useStaff, useTerritories, type LeadTable } from './hooks/useLeads';
 import { useSelection } from './hooks/useSelection';
@@ -85,6 +87,9 @@ export default function App() {
   const { sectors, coverage } = useTerritories();
   // Identité transmise par l'hôte Softr : conditionne l'action « M'assigner ».
   const viewer = useViewer(staff);
+  // Session d'écriture. Sous le régime historique — variables Google absentes —
+  // `required` est faux et rien ne change : la porte ne s'affiche même pas.
+  const auth = useAdminAuth();
   const [tab, setTab] = useState<View>('contact');
   const [selected, setSelected] = useState<Lead | null>(null);
   const [assigning, setAssigning] = useState<Lead | null>(null);
@@ -374,13 +379,18 @@ export default function App() {
                 : 'Chargement…'}
             </p>
           </div>
-          <SecondaryButton
-            icon={RefreshCw}
-            busy={active.loading}
-            onClick={() => void active.refresh()}
-          >
-            Actualiser
-          </SecondaryButton>
+          <div className="flex items-center gap-3">
+            <SecondaryButton
+              icon={RefreshCw}
+              busy={active.loading}
+              onClick={() => void active.refresh()}
+            >
+              Actualiser
+            </SecondaryButton>
+            {/* Seul point de connexion de l'application. Invisible tant que le
+                serveur n'exige pas de session. */}
+            <AccountButton auth={auth} />
+          </div>
         </div>
       </header>
 

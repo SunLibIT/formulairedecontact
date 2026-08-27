@@ -26,6 +26,8 @@
  *   AIRTABLE_BASE_ID par défaut la base « Simulateur Solaire »
  */
 
+import { googleAuthEnabled, requireWriter } from './_lib/auth.js';
+
 const BASE_ID = process.env.AIRTABLE_BASE_ID ?? 'appYjCP9BUY8Zj5Ni';
 
 /** Tables que ce proxy accepte de servir. Toute autre table est refusée. */
@@ -132,10 +134,47 @@ async function proxy(req: Request): Promise<Response> {
 // Exports nommés par méthode HTTP : c'est la signature attendue par le
 // runtime Vercel. Un `export default (req) => Response` voit sa valeur de
 // retour ignorée et la fonction ne répond jamais.
-export function GET(req: Request): Promise<Response> {
+
+/**
+ * Lecture — publique, inchangée.
+ *
+ * `Vary: Authorization` est posé par précaution. Les réponses partent déjà en
+ * `no-store`, donc rien ne les met en cache aujourd'hui ; mais le jour où un
+ * cache apparaîtrait, une réponse anonyme resservie à une requête authentifiée
+ * afficherait « lecture seule » alors que la session est bonne — une panne qui
+ * se corrige toute seule à l'expiration, donc très difficile à diagnostiquer.
+ * Le client ajoute de son côté un `auth=1` neutre dès qu'il détient un jeton,
+ * ce qui sépare aussi la clé de cache. Les deux ensemble, jamais l'un sans
+ * l'autre.
+ */
+export async function GET(req: Request): Promise<Response> {
+  const res = await proxy(req);
+  const headers = new Headers(res.headers);
+  headers.set('Vary', 'Authorization');
+  return new Response(res.body, { status: res.status, headers });
+}
+
+/**
+ * Écriture — sous condition d'identité prouvée.
+ *
+ * C'est le SEUL point d'écriture ouvert au navigateur : toutes les
+ * modifications de l'application (statut, priorité, assignation, notes, actions
+ * groupées) passent par ce PATCH. `api/typeform-webhook.ts` écrit aussi, mais il
+ * s'authentifie par signature HMAC de Typeform et ne relève pas d'un
+ * utilisateur : il n'est donc pas concerné.
+ *
+ * Le client masque ses boutons par courtoisie. C'est ici que le refus a lieu.
+ */
+export async function PATCH(req: Request): Promise<Response> {
+  const check = await requireWriter(req);
+  if (!check.ok) {
+    return json(
+      { error: { message: check.message, type: 'AUTH_REQUIRED' }, googleAuth: true },
+      check.status,
+    );
+  }
   return proxy(req);
 }
 
-export function PATCH(req: Request): Promise<Response> {
-  return proxy(req);
-}
+/** Exporté pour les tests : dit si le régime Google est armé côté serveur. */
+export const writesAreProtected = googleAuthEnabled;
