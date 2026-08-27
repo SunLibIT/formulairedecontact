@@ -12,8 +12,15 @@
  * correspondance.
  */
 
-/** Minuscules sans accents, espaces resserrés — pour comparer des intitulés. */
-function normalise(label: string): string {
+/**
+ * Minuscules sans accents, espaces resserrés — pour comparer des intitulés.
+ *
+ * Exporté parce que l'extraction marketing compare les mêmes intitulés pour en
+ * déduire un segment : deux normalisations distinctes finiraient par diverger
+ * sur un accent ou une apostrophe, et le segment ne correspondrait plus au
+ * libellé court affiché pour la même demande.
+ */
+export function normaliseLabel(label: string): string {
   return (label ?? '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -47,12 +54,12 @@ const SHORT_LABELS: Record<string, string> = {
 export function shortMotive(label: string): string {
   const raw = (label ?? '').trim();
   if (!raw) return '';
-  return SHORT_LABELS[normalise(raw)] ?? raw;
+  return SHORT_LABELS[normaliseLabel(raw)] ?? raw;
 }
 
 /** Vrai si le motif a une abréviation connue — utile pour les tests et l'audit. */
 export function hasShortMotive(label: string): boolean {
-  return normalise(label) in SHORT_LABELS;
+  return normaliseLabel(label) in SHORT_LABELS;
 }
 
 /** Tous les intitulés couverts, pour vérifier la couverture des données. */

@@ -8,17 +8,19 @@
  * comparaison de période : c'est ce qui permet de lire la performance d'une
  * personne et non un extrait décoratif.
  */
-import { Clock, Inbox, Minus, TrendingDown, TrendingUp, UserX } from 'lucide-react';
+import { AlertTriangle, Clock, Inbox, Minus, TrendingDown, TrendingUp, UserX } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { applyPeriod, type FilterState } from '../lib/filters';
 import {
   byMonth,
-  countBy,
+  distribution,
   perAssignee,
   previousPeriod,
+  STALE_DAYS,
   summarise,
   trend,
   withTail,
+  type Distribution,
 } from '../lib/kpi';
 import type { Lead } from '../lib/records';
 import { STATUSES, STATUS_TONE } from '../lib/schema';
@@ -117,22 +119,16 @@ export function KpiPanel({
     [loads],
   );
 
-  const categories = useMemo(
-    () => countBy(current, (l) => l.category).map(toBar),
-    [current],
-  );
-  const motives = useMemo(
-    () => withTail(countBy(current, (l) => l.motive), 6).map(toBar),
-    [current],
-  );
+  // Chaque répartition transporte sa couverture : c'est elle qui sert de
+  // dénominateur, pas l'effectif total. Sur les motifs, 283 demandes sur 440
+  // n'en portent aucun — diviser par 440 divisait toutes les parts par trois.
+  const categories = useMemo(() => distribution(current, (l) => l.category), [current]);
+  const motives = useMemo(() => distribution(current, (l) => l.motive, 6), [current]);
   const departments = useMemo(
-    () => withTail(countBy(current, (l) => l.address.department), 8).map(toBar),
+    () => distribution(current, (l) => l.address.department, 8),
     [current],
   );
-  const partners = useMemo(
-    () => withTail(countBy(current, (l) => l.partner), 6).map(toBar),
-    [current],
-  );
+  const partners = useMemo(() => distribution(current, (l) => l.partner, 6), [current]);
 
   const periodLabel = filters.from || filters.to ? 'sur la période' : 'depuis le début';
 
@@ -174,6 +170,21 @@ export function KpiPanel({
         </Callout>
       ) : (
         <>
+          {/* Un statut hors référentiel compte dans le total et dans aucune
+              barre : la somme des barres cesse alors d'égaler le total. On le
+              dit plutôt que de laisser l'écart se deviner. */}
+          {summary.unknownStatus > 0 && (
+            <Callout tone="amber" icon={AlertTriangle}>
+              <strong>
+                {summary.unknownStatus} demande{summary.unknownStatus > 1 ? 's' : ''} au statut
+                inconnu.
+              </strong>{' '}
+              Leur statut ne correspond à aucune option du référentiel : elles comptent dans le
+              total mais dans aucune barre de répartition, et sont exclues du taux de
+              traitement. À corriger dans Airtable.
+            </Callout>
+          )}
+
           {/* ---- ligne d'indicateurs ---- */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile
@@ -205,11 +216,16 @@ export function KpiPanel({
               icon={UserX}
               tone="neutral"
             />
+            {/* L'ancienneté se compte depuis aujourd'hui, pas depuis la fin de
+                la période : sur un mois passé, tout est mécaniquement vieux de
+                plus de 14 jours. Le dire évite de lire la tuile comme un
+                indicateur de la période. */}
             <StatTile
-              label="En attente > 14 jours"
+              label={`En attente > ${STALE_DAYS} jours`}
               value={summary.staleCount}
               icon={Clock}
               tone={summary.staleCount > 0 ? 'action' : 'neutral'}
+              hint="ancienneté comptée à ce jour"
             />
           </div>
 
@@ -232,7 +248,9 @@ export function KpiPanel({
               value={summary.handledRate}
               label="Taux de traitement"
               tone="fresh"
-              hint={`${current.length - summary.untouched} demandes sorties de « Nouveau » sur ${current.length}`}
+              hint={`${
+                current.length - summary.unknownStatus - summary.untouched
+              } demandes sorties de « Nouveau » sur ${current.length - summary.unknownStatus}`}
             />
           </div>
 
@@ -257,21 +275,28 @@ export function KpiPanel({
               <Columns data={months} caption="Nombre de demandes par mois" />
             </ChartCard>
 
-            <ChartCard title="Type de demandeur">
-              <HBars data={categories} total={current.length} />
+            <ChartCard title="Type de demandeur" subtitle={coverage(categories)}>
+              <HBars data={categories.slices.map(toBar)} total={categories.covered} />
             </ChartCard>
 
-            <ChartCard title="Motif de la demande" subtitle="Renseigné sur une partie seulement">
-              <HBars data={motives} total={current.length} emptyLabel="Aucun motif renseigné" />
+            <ChartCard title="Motif de la demande" subtitle={coverage(motives)}>
+              <HBars
+                data={motives.slices.map(toBar)}
+                total={motives.covered}
+                emptyLabel="Aucun motif renseigné"
+              />
             </ChartCard>
 
-            <ChartCard title="Départements" subtitle="Les huit premiers, le reste replié">
-              <HBars data={departments} total={current.length} />
+            <ChartCard
+              title="Départements"
+              subtitle={`Les huit premiers, le reste replié — ${coverage(departments)}`}
+            >
+              <HBars data={departments.slices.map(toBar)} total={departments.covered} />
             </ChartCard>
 
-            {partners.length > 0 && (
-              <ChartCard title="Partenaires" subtitle="Demandes rattachées à un partenaire">
-                <HBars data={partners} total={current.length} />
+            {partners.slices.length > 0 && (
+              <ChartCard title="Partenaires" subtitle={coverage(partners)}>
+                <HBars data={partners.slices.map(toBar)} total={partners.covered} />
               </ChartCard>
             )}
           </div>
@@ -291,6 +316,19 @@ const toBar = (s: { label: string; count: number }): BarDatum => ({
   label: s.label,
   value: s.count,
 });
+
+/**
+ * Sous-titre de couverture.
+ *
+ * Les parts se calculent sur les demandes qui portent la valeur, pas sur
+ * l'effectif total : c'est la seule façon d'avoir des barres qui totalisent
+ * 100 %. Dire combien de demandes entrent dans le calcul est alors une
+ * obligation, sinon le lecteur croit lire une part de l'ensemble.
+ */
+function coverage({ covered, total }: Distribution): string {
+  if (covered === total) return `Sur les ${total} demandes de la sélection`;
+  return `${covered} demandes renseignées sur ${total}`;
+}
 
 /** Variation entre périodes, à double codage icône + signe. */
 function TrendLine({

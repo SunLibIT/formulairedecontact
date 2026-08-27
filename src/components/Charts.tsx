@@ -57,7 +57,7 @@ export interface BarDatum {
   value: number;
   /** Uniquement pour les barres de statut. Absent = teinte nominale unique. */
   tone?: Tone;
-  /** Complément affiché à droite de la valeur (part, sous-total…). */
+  /** Précision ajoutée **après** la part, jamais à sa place (« dont 12 à traiter »). */
   note?: string;
 }
 
@@ -74,7 +74,14 @@ export function HBars({
   emptyLabel = 'Aucune donnée',
 }: {
   data: BarDatum[];
-  /** Base des pourcentages. Par défaut la plus grande valeur. */
+  /**
+   * Base des pourcentages — à défaut, la somme des barres.
+   *
+   * Passer l'effectif total alors que les barres excluent les valeurs vides
+   * donne des parts qui ne totalisent pas 100 %. Le bon dénominateur est le
+   * nombre de demandes **portant la valeur** : c'est ce que `Distribution.covered`
+   * fournit.
+   */
   total?: number;
   emptyLabel?: string;
 }) {
@@ -117,9 +124,13 @@ export function HBars({
               />
             </span>
 
+            {/* La part et la note s'ajoutent, elles ne se remplacent pas :
+                une colonne où « 249 dont 210 à traiter » voisine « 30 7 % »
+                aligne deux grandeurs différentes et ne se lit plus. */}
             <span className="whitespace-nowrap text-xs tabular-nums text-ink">
               <span className="font-semibold">{d.value}</span>
-              <span className="ml-1 text-muted">{d.note ?? `${share} %`}</span>
+              <span className="ml-1 text-muted">{share} %</span>
+              {d.note && <span className="ml-1 text-muted">· {d.note}</span>}
             </span>
           </li>
         );

@@ -12,6 +12,7 @@
  */
 import { CalendarRange } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { shiftIso, todayIso } from '../lib/dates';
 import type { FilterState } from '../lib/filters';
 import { SegmentedFilter } from './ui';
 
@@ -25,31 +26,29 @@ const PRESETS: Array<{ value: Preset; label: string }> = [
   { value: 'custom', label: 'Sur mesure' },
 ];
 
-/** `YYYY-MM-DD` dans le fuseau local, jamais en UTC : un décalage de fuseau
- *  ferait basculer la borne d'un jour. */
-function isoDay(d: Date): string {
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
-}
+/** Durée de chaque raccourci, **bornes comprises**. */
+const PRESET_DAYS: Record<Exclude<Preset, 'custom' | 'all'>, number> = {
+  '7d': 7,
+  '30d': 30,
+  '3m': 90,
+};
 
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return isoDay(d);
+/**
+ * Début d'une fenêtre de `days` jours finissant aujourd'hui.
+ *
+ * Le `- 1` n'est pas un détail : `applyPeriod` est inclusive aux deux bornes,
+ * donc `du 20 au 27` couvre huit jours. Sans lui, « 7 jours » en affichait
+ * huit, « 30 jours » trente et un, et la comparaison avec la période
+ * précédente héritait de l'écart.
+ */
+function startOfWindow(days: number): string {
+  return shiftIso(todayIso(), -(days - 1));
 }
 
 /** `custom` est exclu : il n'a pas de plage propre, il ouvre la saisie. */
 function rangeFor(preset: Exclude<Preset, 'custom'>): { from: string; to: string } {
-  switch (preset) {
-    case '7d':
-      return { from: daysAgo(7), to: isoDay(new Date()) };
-    case '30d':
-      return { from: daysAgo(30), to: isoDay(new Date()) };
-    case '3m':
-      return { from: daysAgo(90), to: isoDay(new Date()) };
-    case 'all':
-      return { from: '', to: '' };
-  }
+  if (preset === 'all') return { from: '', to: '' };
+  return { from: startOfWindow(PRESET_DAYS[preset]), to: todayIso() };
 }
 
 /**
@@ -59,11 +58,12 @@ function rangeFor(preset: Exclude<Preset, 'custom'>): { from: string; to: string
  */
 function presetFor(from: string, to: string): Preset {
   if (!from && !to) return 'all';
-  const today = isoDay(new Date());
-  if (to !== today) return 'custom';
-  if (from === daysAgo(7)) return '7d';
-  if (from === daysAgo(30)) return '30d';
-  if (from === daysAgo(90)) return '3m';
+  if (to !== todayIso()) return 'custom';
+  // Même source que `rangeFor` : deux formules distinctes finiraient par
+  // diverger et le raccourci ne se rallumerait plus après un rechargement.
+  for (const [preset, days] of Object.entries(PRESET_DAYS)) {
+    if (from === startOfWindow(days)) return preset as Preset;
+  }
   return 'custom';
 }
 
@@ -120,7 +120,7 @@ export function PeriodFilter({
             // On repart des bornes en place pour que l'utilisateur les ajuste
             // au lieu de ressaisir tout. Sans bornes, on amorce sur 30 jours.
             if (!filters.from && !filters.to) {
-              onChange({ from: daysAgo(30), to: isoDay(new Date()) });
+              onChange(rangeFor('30d'));
             }
             return;
           }

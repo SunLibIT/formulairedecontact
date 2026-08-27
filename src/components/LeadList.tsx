@@ -26,6 +26,7 @@ import {
   type AgeThresholds,
 } from '../lib/format';
 import type { SortField, SortState } from '../lib/filters';
+import { normalisePostalCode } from '../lib/geo';
 import type { Selection } from '../hooks/useSelection';
 import { categoryLabel, priorityEdge } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
@@ -39,9 +40,33 @@ const ROW_HEIGHT = 56;
 /** Lignes montées au-delà de la zone visible, pour un défilement sans à-coups. */
 const OVERSCAN = 8;
 
-/** Gabarit de colonnes, partagé par l'en-tête et les lignes pour qu'ils s'alignent. */
+/**
+ * Gabarit de colonnes, partagé par l'en-tête et les lignes pour qu'ils s'alignent.
+ *
+ * Deux variantes, et non une seule assortie d'un `hidden` : quand « Assigné »
+ * passe en `display:none`, sa piste doit disparaître avec elle, sinon
+ * « Actions » glisse d'une case et toute la ligne se décale.
+ *
+ * Le `minmax(0, …)` est indispensable partout — sans lui, une piste prend pour
+ * minimum la largeur de son contenu et les `truncate` internes ne tronquent
+ * plus rien.
+ */
 const GRID =
-  'grid grid-cols-[1.75rem_minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,0.8fr)_7rem_4.5rem_minmax(0,1fr)_6.5rem] items-center gap-3';
+  'grid items-center gap-3 ' +
+  // Étroit — sans « Assigné » : 8 pistes.
+  'grid-cols-[1.75rem_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,0.8fr)_7rem_4.5rem_6.5rem] ' +
+  // Large — « Assigné » revient en avant-dernière position : 9 pistes.
+  'min-[1100px]:grid-cols-[1.75rem_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,0.85fr)_7rem_4.5rem_minmax(0,0.9fr)_6.5rem]';
+
+/**
+ * Colonne repliée sous 1 100 px, en-tête et cellule ensemble.
+ *
+ * Huit colonnes ne tiennent pas à toutes les largeurs : c'est « Assigné » qui
+ * cède, parce que l'information reste lisible dans la fiche et dans la vue
+ * cartes, alors qu'une adresse e-mail tronquée à quinze caractères ne sert
+ * plus à rien.
+ */
+const HIDE_NARROW = 'hidden min-[1100px]:block';
 
 interface Column {
   key: string;
@@ -50,15 +75,20 @@ interface Column {
   sort?: SortField;
   /** Alignement à droite pour les valeurs numériques, comme l'exige la charte. */
   numeric?: boolean;
+  /** Repliée sous 1 100 px, faute de place pour huit colonnes. */
+  hideNarrow?: boolean;
 }
 
+// « Nom » et non « Contact » : le libellé désignait la personne *et* ses moyens
+// de contact, ce qui n'a plus de sens depuis que « Coordonnées » existe à côté.
 const COLUMNS: Column[] = [
-  { key: 'contact', label: 'Contact', sort: 'name' },
+  { key: 'contact', label: 'Nom', sort: 'name' },
   { key: 'motive', label: 'Motif' },
-  { key: 'city', label: 'Ville' },
+  { key: 'contacts', label: 'Coordonnées' },
+  { key: 'city', label: 'CP / Ville' },
   { key: 'status', label: 'Statut', sort: 'status' },
   { key: 'age', label: 'Attente', sort: 'date', numeric: true },
-  { key: 'assignee', label: 'Assigné', sort: 'assignee' },
+  { key: 'assignee', label: 'Assigné', sort: 'assignee', hideNarrow: true },
   { key: 'actions', label: 'Actions' },
 ];
 
@@ -152,7 +182,11 @@ export function LeadList({
                     : 'none'
                   : undefined
               }
-              className={col.numeric ? 'text-right' : undefined}
+              className={
+                [col.numeric ? 'text-right' : '', col.hideNarrow ? HIDE_NARROW : '']
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
             >
               {col.sort ? (
                 <button
@@ -229,6 +263,9 @@ function Row({
   const days = ageInDays(lead.date);
   const tone = ageTone(days, thresholds);
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
+  // Règle partagée avec l'export : un code postal à quatre chiffres est un
+  // zéro initial perdu par un tableur, pas un code court.
+  const postalCode = normalisePostalCode(lead.address.postalCode);
 
 
   return (
@@ -271,7 +308,7 @@ function Row({
         )}
       </div>
 
-      {/* Contact — deux lignes : identité, puis moyens de contact. */}
+      {/* Nom — deux lignes : l'identité, puis le profil du demandeur. */}
       <div role="cell" className="min-w-0">
         <p className="min-w-0 truncate text-sm font-semibold text-ink">
           {formatPersonName(lead.fullName)}
@@ -285,19 +322,23 @@ function Row({
         <p className="truncate text-xs text-ink" title={lead.motive}>
           {shortMotive(lead.motive) || '—'}
         </p>
+      </div>
+
+      {/* Coordonnées — e-mail et téléphone ensemble, comme dans la carte. Le
+          `href` du téléphone prend le numéro brut : seul l'affichage passe par
+          `formatPhone`. Le tiret n'apparaît que si les deux manquent — sous un
+          numéro présent il ne serait que du bruit. */}
+      <div role="cell" className="min-w-0">
         {lead.email && (
           <a
             href={`mailto:${lead.email}`}
             onClick={stop}
+            title={lead.email}
             className="block min-w-0 truncate text-xs text-teal-ink hover:underline"
           >
             {lead.email}
           </a>
         )}
-      </div>
-
-      <div role="cell" className="min-w-0">
-        <p className="truncate text-xs text-ink">{lead.address.city || '—'}</p>
         {lead.phone && (
           <a
             href={`tel:${lead.phone}`}
@@ -306,6 +347,31 @@ function Row({
           >
             {formatPhone(lead.phone)}
           </a>
+        )}
+        {!lead.email && !lead.phone && <p className="text-xs text-muted">—</p>}
+      </div>
+
+      {/* Le code postal au-dessus de la ville, et non l'inverse : cinq chiffres
+          en tête de colonne s'alignent d'une ligne à l'autre et se scannent
+          d'une seule passe verticale, ce qui est exactement la question posée
+          ici — la demande est-elle sur le bon secteur ? La ville ne répond pas
+          à ça (« Saint-Priest » n'annonce pas son département) et se lit à la
+          ligne suivante, où sa troncature ne coûte rien. Sans code postal elle
+          remonte, plutôt que de laisser un blanc au-dessus d'elle. */}
+      <div role="cell" className="min-w-0">
+        {postalCode ? (
+          <>
+            <p className="text-xs font-semibold tabular-nums text-ink">{postalCode}</p>
+            {lead.address.city && (
+              <p className="truncate text-xs text-muted" title={lead.address.city}>
+                {lead.address.city}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="truncate text-xs text-ink" title={lead.address.city || undefined}>
+            {lead.address.city || '—'}
+          </p>
         )}
       </div>
 
@@ -324,7 +390,7 @@ function Row({
         </span>
       </div>
 
-      <div role="cell" className="min-w-0">
+      <div role="cell" className={`min-w-0 ${HIDE_NARROW}`}>
         <p className={`truncate text-xs ${assignee ? 'text-ink' : 'text-muted'}`}>
           {assignee || 'Non assigné'}
         </p>

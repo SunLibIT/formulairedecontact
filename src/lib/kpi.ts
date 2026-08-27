@@ -3,27 +3,58 @@
  * tout se déduit des `Lead[]` déjà chargés, donc l'onglet KPI n'ajoute
  * aucune requête.
  */
+import { dayIso, dayNumber } from './dates';
+import { ageInDays } from './format';
 import type { Lead } from './records';
 import { PRIORITIES, STATUSES, type Priority, type Status } from './schema';
 
-const DAY_MS = 86_400_000;
+/**
+ * Seuil d'alerte sur une demande non traitée, en jours.
+ *
+ * Exporté pour que la tuile qui l'affiche lise la même valeur que le calcul :
+ * un « > 14 jours » écrit en dur dans le libellé finit par mentir le jour où
+ * le seuil bouge.
+ */
+export const STALE_DAYS = 14;
 
 export interface Slice {
   label: string;
   count: number;
 }
 
+/**
+ * Une répartition, **et sa couverture**.
+ *
+ * `covered` est le nombre de demandes qui portent réellement la valeur, `total`
+ * l'effectif de départ. Les deux sont indispensables ensemble : sans `covered`,
+ * l'appelant divise par `total` et obtient des parts qui ne totalisent jamais
+ * 100 %. C'est exactement ce qui se passait sur le graphique des motifs, où 283
+ * demandes sur 440 n'ont aucun motif — un motif présent 80 fois s'affichait
+ * « 18 % » au lieu de 51 % des motifs renseignés.
+ */
+export interface Distribution {
+  slices: Slice[];
+  /** Demandes portant la valeur. Dénominateur des parts. */
+  covered: number;
+  /** Effectif total examiné, couverture comprise. */
+  total: number;
+}
+
 /** Comptage par clé, trié du plus fréquent au plus rare, vides exclus. */
-export function countBy(leads: Lead[], key: (l: Lead) => string): Slice[] {
+export function countBy(leads: Lead[], key: (l: Lead) => string): Distribution {
   const tally = new Map<string, number>();
+  let covered = 0;
   for (const lead of leads) {
-    const k = key(lead).trim();
+    const k = (key(lead) ?? '').trim();
     if (!k) continue;
+    covered++;
     tally.set(k, (tally.get(k) ?? 0) + 1);
   }
-  return [...tally.entries()]
+  const slices = [...tally.entries()]
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'fr'));
+
+  return { slices, covered, total: leads.length };
 }
 
 /**
@@ -37,6 +68,22 @@ export function withTail(slices: Slice[], keep: number): Slice[] {
   const head = slices.slice(0, keep);
   const tail = slices.slice(keep).reduce((sum, s) => sum + s.count, 0);
   return tail > 0 ? [...head, { label: 'Autres', count: tail }] : head;
+}
+
+/**
+ * `countBy` puis repli de la queue, en conservant la couverture.
+ *
+ * Les deux vont toujours ensemble côté graphique ; les séparer obligeait
+ * l'appelant à reconstruire la `Distribution` à la main, ce qui est
+ * précisément l'endroit où le dénominateur s'était perdu.
+ */
+export function distribution(
+  leads: Lead[],
+  key: (l: Lead) => string,
+  keep?: number,
+): Distribution {
+  const dist = countBy(leads, key);
+  return keep == null ? dist : { ...dist, slices: withTail(dist.slices, keep) };
 }
 
 export interface MonthPoint {
@@ -142,6 +189,16 @@ export interface Summary {
   medianUntouchedAge: number | null;
   /** Non traitées depuis plus de 14 jours. */
   staleCount: number;
+  /**
+   * Demandes dont le statut n'est dans aucune option connue.
+   *
+   * Elles comptent dans `total` mais dans aucune case de `byStatus`, ce qui
+   * ferait diverger la somme des barres du total sans que rien ne le signale.
+   * La base est propre aujourd'hui ; elle ne l'était pas — un import raté y a
+   * déjà créé des options `Statut` parasites, horodatages compris. On expose
+   * donc le compteur au lieu de l'absorber.
+   */
+  unknownStatus: number;
 }
 
 function median(values: number[]): number | null {
@@ -158,20 +215,21 @@ export function summarise(leads: Lead[], now = Date.now()): Summary {
     number
   >;
   let unassigned = 0;
+  let unknownStatus = 0;
   const untouchedAges: number[] = [];
   let staleCount = 0;
 
   for (const lead of leads) {
     if (lead.status in byStatus) byStatus[lead.status]++;
+    else unknownStatus++;
     if (lead.priority in byPriority) byPriority[lead.priority]++;
     if (!lead.assigneeIds.length && !lead.assigneeNames.length) unassigned++;
 
     if (lead.status === 'Nouveau') {
-      const t = new Date(lead.date).getTime();
-      if (Number.isFinite(t)) {
-        const age = Math.max(0, Math.floor((now - t) / DAY_MS));
+      const age = ageInDays(lead.date, now);
+      if (age != null) {
         untouchedAges.push(age);
-        if (age > 14) staleCount++;
+        if (age > STALE_DAYS) staleCount++;
       }
     }
   }
@@ -180,6 +238,10 @@ export function summarise(leads: Lead[], now = Date.now()): Summary {
   const rejected = byStatus['Hors Critères'];
   const decided = qualified + rejected;
   const untouched = byStatus['Nouveau'];
+  // Base du taux de traitement : les demandes dont on sait lire le statut. Un
+  // statut inconnu n'est pas « traité », il est illisible — le compter comme
+  // traité gonflerait le taux à chaque import douteux.
+  const readable = leads.length - unknownStatus;
 
   return {
     total: leads.length,
@@ -190,9 +252,10 @@ export function summarise(leads: Lead[], now = Date.now()): Summary {
     qualified,
     rejected,
     qualificationRate: decided ? qualified / decided : null,
-    handledRate: leads.length ? (leads.length - untouched) / leads.length : null,
+    handledRate: readable > 0 ? (readable - untouched) / readable : null,
     medianUntouchedAge: median(untouchedAges),
     staleCount,
+    unknownStatus,
   };
 }
 
@@ -209,18 +272,25 @@ export function trend(current: number, previous: number): number | null {
 
 /**
  * Période immédiatement antérieure, de même durée, pour la comparaison.
- * Bornes en `YYYY-MM-DD`, comme les filtres.
+ * Bornes en `YYYY-MM-DD`, comme les filtres, et **inclusives des deux côtés**
+ * comme `applyPeriod`.
+ *
+ * Le calcul se fait en numéros de jour, pas en millisecondes. La version
+ * précédente interprétait les bornes en heure locale puis les réécrivait avec
+ * `toISOString()`, donc en UTC : à Paris, chaque borne reculait d'un jour, et
+ * le `span` calculé en millisecondes en perdait un second. Août se comparait à
+ * `30 juin → 30 juillet` au lieu de `1er → 31 juillet`, et un jour entier de
+ * données tombait entre les deux fenêtres. Le passage à l'heure d'été ajoutait
+ * une heure d'écart qui pouvait décaler une borne de plus.
  */
 export function previousPeriod(
   from: string,
   to: string,
 ): { from: string; to: string } | null {
-  if (!from || !to) return null;
-  const start = new Date(`${from}T00:00:00`).getTime();
-  const end = new Date(`${to}T00:00:00`).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  const start = dayNumber(from);
+  const end = dayNumber(to);
+  if (start == null || end == null || end < start) return null;
 
-  const span = end - start + DAY_MS;
-  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
-  return { from: iso(start - span), to: iso(start - DAY_MS) };
+  const span = end - start + 1;
+  return { from: dayIso(start - span), to: dayIso(start - 1) };
 }

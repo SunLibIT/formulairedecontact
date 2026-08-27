@@ -8,6 +8,7 @@
  * dupliqués par onglet, comme c'était le cas jusqu'ici.
  */
 import type { AirtableRecord } from './airtable';
+import { departmentFromPostalCode, normalisePostalCode } from './geo';
 import { CONTACT, LEAD, STAFF, type Priority, type Status } from './schema';
 
 export type LeadSource = 'contact' | 'solar';
@@ -55,6 +56,16 @@ export interface Lead {
   /** Noms résolus, dans le même ordre. */
   assigneeNames: string[];
   notes: string;
+  /**
+   * Consentement RGPD coché à la soumission.
+   *
+   * **Faux vaut « pas de consentement vérifiable », pas « refus »** : les
+   * reprises historiques ont le champ vide, et une case décochée est stockée
+   * de la même façon qu'une case jamais posée. On ne sait pas distinguer les
+   * deux, donc l'export marketing exclut les deux — c'est le seul choix
+   * défendable quand la base légale n'est pas prouvable.
+   */
+  gdprConsent: boolean;
   /** Chiffres propres au simulateur solaire. */
   metrics?: {
     annualConsumption?: number;
@@ -76,6 +87,26 @@ const str = (v: unknown): string => {
 
 const num = (v: unknown): number | undefined =>
   typeof v === 'number' ? v : undefined;
+
+/** Libellés textuels valant « vrai » — les deux tables n'ont pas le même type. */
+const TRUTHY = new Set(['true', 'oui', 'yes', '1', 'x', 'checked', 'coché', 'coche']);
+
+/**
+ * Lit un booléen tolérant au type de stockage.
+ *
+ * Les deux colonnes de consentement sont aujourd'hui des cases à cocher
+ * Airtable : la valeur est `true`, ou le champ est absent de la réponse. La
+ * tolérance aux formes textuelles couvre le cas où la colonne serait un jour
+ * remplie par un import ou une automatisation, qui écrivent volontiers `"Oui"`
+ * ou `"1"`. Un faux négatif ici retirerait des contacts légitimes de toutes
+ * les campagnes, sans erreur visible.
+ */
+const bool = (v: unknown): boolean => {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0;
+  if (typeof v === 'string') return TRUTHY.has(v.trim().toLowerCase());
+  return false;
+};
 
 const ids = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
@@ -139,6 +170,7 @@ export function toContactLead(
     assigneeIds,
     assigneeNames: resolveNames(assigneeIds, staff),
     notes: str(f[CONTACT.notes]),
+    gdprConsent: bool(f[CONTACT.gdprConsent]),
   };
 }
 
@@ -175,7 +207,10 @@ export function toSolarLead(
       line2: '',
       city: str(f[LEAD.city]),
       postalCode: str(f[LEAD.postalCode]),
-      department: str(f[LEAD.postalCode]).slice(0, 2),
+      // Cette table n'a pas de colonne « Département » : on la déduit. Un
+      // `slice(0, 2)` brut donnait « 24 » pour un code saisi `2456` et
+      // écrasait les trois chiffres de l'outre-mer.
+      department: departmentFromPostalCode(str(f[LEAD.postalCode])),
       region: '',
       country: '',
     },
@@ -185,6 +220,7 @@ export function toSolarLead(
     assigneeIds,
     assigneeNames: names.length ? names : legacyAssignee ? [legacyAssignee] : [],
     notes: str(f[LEAD.notes]),
+    gdprConsent: bool(f[LEAD.gdprConsent]),
     metrics: {
       annualConsumption: num(f[LEAD.annualConsumption]),
       monthlyBill: num(f[LEAD.monthlyBill]),
@@ -193,9 +229,19 @@ export function toSolarLead(
   };
 }
 
+/**
+ * Localité sur une ligne — « 69100 Villeurbanne ».
+ *
+ * Le code postal passe par `normalisePostalCode` comme partout ailleurs :
+ * affiché brut, un import tableur donnerait « 1000 Bourg-en-Bresse ». Chacun
+ * des deux morceaux peut manquer sans laisser de blanc.
+ */
+export function formatLocality(a: Lead['address']): string {
+  return [normalisePostalCode(a.postalCode), a.city].filter(Boolean).join(' ');
+}
+
 /** Adresse sur une ligne, sans virgule orpheline quand un morceau manque. */
 export function formatAddress(a: Lead['address']): string {
   const street = [a.line1, a.line2].filter(Boolean).join(', ');
-  const town = [a.postalCode, a.city].filter(Boolean).join(' ');
-  return [street, town, a.country].filter(Boolean).join(', ');
+  return [street, formatLocality(a), a.country].filter(Boolean).join(', ');
 }

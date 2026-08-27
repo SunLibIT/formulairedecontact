@@ -19,6 +19,7 @@ import {
 import { useCallback, useMemo, useState } from 'react';
 import { AssignModal } from './components/AssignModal';
 import { BulkActionBar, type BulkPatch } from './components/BulkActionBar';
+import { ExportButton } from './components/ExportButton';
 import { FilterBar } from './components/FilterBar';
 import { KpiPanel } from './components/KpiPanel';
 import { LeadCard } from './components/LeadCard';
@@ -356,7 +357,7 @@ export default function App() {
           onReset={resetFilters}
           options={options}
           stats={stats}
-          searchPlaceholder="Nom, email, entreprise, ville, partenaire…"
+          searchPlaceholder="Nom, email, entreprise, ville, code postal…"
         />
 
         {/* Quatre états, déclinés par vue : chargement, erreur, aucun
@@ -410,12 +411,17 @@ export default function App() {
             {/* Barre d'outils du contenu : compteur à gauche, sélecteur
                 d'affichage à droite. Masqué sous 700 px, où une seule vue a
                 du sens. */}
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <p aria-live="polite" className="text-sm text-muted">
                 {sorted.length} demande{sorted.length > 1 ? 's' : ''}
                 {sorted.length !== active.leads.length && ` sur ${active.leads.length}`}
               </p>
-              {canChoose && <ViewSwitcher value={view} onChange={setView} />}
+              <div className="flex items-start gap-3">
+                {/* L'export porte sur la liste triée et filtrée, celle-là
+                    même qui est rendue en dessous. */}
+                <ExportButton leads={sorted} source={tab} />
+                {canChoose && <ViewSwitcher value={view} onChange={setView} />}
+              </div>
             </div>
 
             {listView ? (

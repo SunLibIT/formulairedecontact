@@ -28,7 +28,7 @@ import {
 } from '../lib/format';
 import { categoryLabel } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
-import type { Lead } from '../lib/records';
+import { formatLocality, type Lead } from '../lib/records';
 import { TONE_CLASS } from '../lib/tones';
 import { PriorityBadge, StatusBadge } from './ui';
 
@@ -67,6 +67,7 @@ export function LeadCard({
   const CategoryIcon = CATEGORY_ICON[lead.category] ?? User;
 
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
+  const locality = formatLocality(lead.address);
 
 
 
@@ -109,15 +110,15 @@ export function LeadCard({
           </span>
         </p>
 
-        {/* Ville seule, pas l'adresse complète : minimisation des données.
-            L'adresse reste dans la fiche de détail, consultée à la demande. */}
-        {lead.address.city && (
+        {/* Code postal et ville, pas l'adresse complète : minimisation des
+            données. La rue reste dans la fiche de détail, consultée à la
+            demande. Le code postal dit le secteur d'un coup d'œil, ce que la
+            ville seule ne fait pas — et il remplace le « (69) » tiré du
+            département, qui n'en répétait que les deux premiers chiffres. */}
+        {locality && (
           <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted">
             <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            <span className="truncate">
-              {lead.address.city}
-              {lead.address.department && ` (${lead.address.department})`}
-            </span>
+            <span className="truncate">{locality}</span>
           </p>
         )}
 

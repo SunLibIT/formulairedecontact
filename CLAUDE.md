@@ -49,8 +49,12 @@ Typeform ──webhook──► api/typeform-webhook ──► Airtable
 | `lib/airtable.ts` | transport: pagination, upsert, batched writes, 429 retry, proxy-or-direct |
 | `lib/records.ts` | normalises both Airtable tables into one `Lead` type |
 | `lib/filters.ts` | filtering, sorting, counters |
+| `lib/kpi.ts` | distributions, summary, per-assignee load, period comparison |
+| `lib/dates.ts` | calendar-day arithmetic. The only module that knows about time zones |
+| `lib/geo.ts` | postal code and department normalisation |
 | `lib/leadActions.ts` | rules shared by both views (priority edge, category label) |
 | `lib/tones.ts` | the colour code rendered as classes, fills and icons |
+| `lib/marketingExport.ts` | derived campaign columns, CSV serialisation, GDPR gate |
 | `hooks/` | loading, staff cache, view preference, selection, dialog mechanics |
 | `components/` | presentation only |
 
@@ -142,6 +146,73 @@ The app runs in a **third-party iframe**, which has two consequences worth remem
 - Viewer identity comes from `?email=`, which Softr injects. `useViewer` matches it against
   the RH table. That is what enables "M'assigner". No email means no identity — a normal
   case, not an error.
+
+### KPI — three rules that were learned the hard way
+
+`lib/kpi.ts` is pure and takes the already-loaded `Lead[]`; the KPI tab issues no request of
+its own. Every figure it produces is wrong *silently* when it is wrong, which is why the
+three rules below are rules and not preferences. All three were violated at once, and the
+resulting numbers were reported as "incohérences" before anyone could name the cause.
+
+**Percentages divide by coverage, never by the total.** `countBy` drops empty values, so
+dividing by `leads.length` yields bars that never sum to 100. That is not a rounding
+artefact: 283 of 440 contact requests carry no `motive`, so every share on that chart read
+at roughly a third of its true value. `countBy` therefore returns a `Distribution`
+— `{ slices, covered, total }` — and `covered` is the denominator. Charts state their
+coverage in the subtitle ("157 demandes renseignées sur 440"); a chart that hides how much
+data it is missing is worse than one with no chart. Only "Répartition par statut" uses the
+total, because it has no gap by construction.
+
+**Day arithmetic goes through `lib/dates.ts`, never through milliseconds.** A period bound is
+a `YYYY-MM-DD` *label*, not an instant. Parsing it as local time and re-emitting it with
+`toISOString()` — which is UTC — moves it back one day in Paris, and subtracting a span in
+milliseconds loses another across a DST change. `previousPeriod` did both: August compared
+against `30 June → 30 July`. `dayNumber`/`dayIso` stay in UTC end to end; `isoDay`/`todayIso`
+are the only functions that look at the reader's time zone, because "today" is the only
+genuinely local notion here. `vitest.config.ts` pins `TZ=Europe/Paris` — without it these
+tests pass on a UTC machine and the bug ships.
+
+**Period bounds are inclusive on both sides.** `applyPeriod` includes both `from` and `to`, so
+a 7-day window starts `today - 6`. The preset shortcuts got this wrong and covered eight days
+under a "7 jours" label. `PRESET_DAYS` and `startOfWindow` in `PeriodFilter.tsx` are the
+single source; `presetFor` reads them too, so the active shortcut cannot drift from the range
+it sets.
+
+Two smaller invariants worth keeping:
+
+- `summarise` counts a status outside `STATUSES` in `unknownStatus` and excludes it from
+  `handledRate`. The base is clean today and was not always: an import once created ~170
+  parasitic `Statut` options. An unreadable status is not a handled one.
+- Ageing (`medianUntouchedAge`, `staleCount`) is measured against *now*, on a set already
+  restricted to the period. On a past period every request is trivially older than the
+  threshold — the tile says so rather than pretending otherwise.
+
+`lib/kpi.test.ts` and `lib/dates.test.ts` pin all of the above. They did not exist while the
+bugs did, which is the whole story.
+
+### Marketing export
+
+`lib/marketingExport.ts` serialises **the list currently on screen** — same filters, same
+period, same sort — into a CSV. It has no selection logic of its own, deliberately: a
+second set of rules would drift from the view's.
+
+- **Consent gates the export, and nothing else does.** `eligibleForCampaign` keeps only
+  records whose GDPR checkbox is `true`. A cleared box and a legacy row with an empty
+  column are indistinguishable in Airtable, so both are dropped. The count of excluded
+  rows is shown next to the button *before* the click — an export shorter than the list
+  with no explanation reads as a bug.
+- The webhook only started writing `gdprConsent` on 2026-08-26, so nearly every
+  historical contact request has it empty. At the time of writing: **2 of 440** contact
+  requests carry consent, against **249 of 343** solar leads. The feature is correct; the
+  contact table simply has no consent history to export yet.
+- Derived columns — segment, department, age, month, quarter — are computed here and
+  written nowhere. They are views of the data, not data.
+- `toCsv` writes a UTF-8 BOM (Excel reads the file as ANSI without it), uses `;` and CRLF,
+  and prefixes cells starting with `=` or `@` with an apostrophe. The data comes from a
+  public form, so a `=HYPERLINK(…)` in a name field would otherwise be evaluated on open.
+  Purely numeric values are left alone, so `+33…` phone numbers keep no stray apostrophe.
+- Downloads need `allow-downloads` on the Softr iframe. A blocked download fails
+  silently, with no exception to catch — which is why the UI reports the row count.
 
 ### Colour and icons
 

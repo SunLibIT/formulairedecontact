@@ -32,6 +32,7 @@ function lead(over: Partial<Lead> & { id: string }): Lead {
     assigneeIds: [],
     assigneeNames: [],
     notes: '',
+    gdprConsent: false,
     ...over,
   };
 }

@@ -33,7 +33,7 @@ const CONTACT_FIELDS = [
   CONTACT.address, CONTACT.addressLine2, CONTACT.city, CONTACT.postalCode,
   CONTACT.department, CONTACT.region, CONTACT.country,
   CONTACT.status, CONTACT.priority, CONTACT.partner, CONTACT.assignee,
-  CONTACT.notes,
+  CONTACT.notes, CONTACT.gdprConsent,
 ] as const;
 
 const LEAD_FIELDS = [
@@ -41,6 +41,7 @@ const LEAD_FIELDS = [
   LEAD.address, LEAD.city, LEAD.postalCode, LEAD.createdOn,
   LEAD.status, LEAD.priority, LEAD.partner, LEAD.assignee, LEAD.assigneeText,
   LEAD.notes, LEAD.annualConsumption, LEAD.monthlyBill, LEAD.recommendedPower,
+  LEAD.gdprConsent,
 ] as const;
 
 /* ---------------------------------------------------------------- effectif */

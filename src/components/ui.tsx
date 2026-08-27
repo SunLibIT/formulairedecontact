@@ -515,17 +515,25 @@ export function LeadRowSkeleton() {
       className="flex items-center gap-3 border-b border-line px-3"
       style={{ height: 56 }}
     >
-      <div className="min-w-0 flex-[2.4] space-y-1.5">
+      <div className="min-w-0 flex-[1.4] space-y-1.5">
         <div className="skeleton h-3.5 w-2/5 rounded" />
         <div className="skeleton h-3 w-1/3 rounded" />
       </div>
-      <div className="min-w-0 flex-[1.1] space-y-1.5">
+      <div className="min-w-0 flex-1">
         <div className="skeleton h-3 w-3/4 rounded" />
-        <div className="skeleton h-3 w-2/3 rounded" />
+      </div>
+      <div className="min-w-0 flex-[1.5] space-y-1.5">
+        <div className="skeleton h-3 w-5/6 rounded" />
+        <div className="skeleton h-3 w-1/2 rounded" />
+      </div>
+      <div className="min-w-0 flex-[0.8] space-y-1.5">
+        <div className="skeleton h-3 w-3/4 rounded" />
+        <div className="skeleton h-3 w-1/3 rounded" />
       </div>
       <div className="skeleton h-3 w-16 rounded" />
       <div className="skeleton h-5 w-10 rounded-full" />
-      <div className="skeleton h-3 w-24 rounded" />
+      {/* Assigné, replié au même seuil que dans la liste réelle. */}
+      <div className="skeleton hidden h-3 w-24 rounded min-[1100px]:block" />
     </div>
   );
 }
