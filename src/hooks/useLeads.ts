@@ -17,10 +17,13 @@ import {
   toContactLead,
   toSolarLead,
   toStaffMember,
+  toTerritory,
   type Lead,
   type StaffMember,
+  type Territory,
 } from '../lib/records';
-import { CONTACT, LEAD, STAFF, TABLES } from '../lib/schema';
+import { CONTACT, LEAD, STAFF, TABLES, TERRITORY } from '../lib/schema';
+import { buildSectorIndex, coverageByStaff } from '../lib/territories';
 
 /** Une heure : les demandes arrivent au compte-gouttes, inutile de marteler l'API. */
 const REFRESH_MS = 3_600_000;
@@ -83,6 +86,49 @@ export function useStaff() {
   const active = useMemo(() => staff.filter((s) => s.active), [staff]);
 
   return { staff, active, byId, error };
+}
+
+/* ------------------------------------------------- sectorisation commerciale */
+
+let territoriesCache: Promise<Territory[]> | null = null;
+
+function loadTerritories(): Promise<Territory[]> {
+  territoriesCache ??= listRecords(TABLES.territories, {
+    fieldIds: [TERRITORY.code, TERRITORY.name, TERRITORY.region, TERRITORY.salesRep, TERRITORY.active],
+  })
+    .then((records) => records.map(toTerritory))
+    .catch((err) => {
+      territoriesCache = null;
+      throw err;
+    });
+  return territoriesCache;
+}
+
+/**
+ * Sectorisation commerciale, mise en cache comme la table RH.
+ *
+ * 95 lignes qui ne changent que quand l'organisation commerciale change : un
+ * chargement par session suffit. Un échec n'est pas remonté à l'appelant —
+ * l'interface perd la mise en avant du secteur et reste utilisable, ce qui vaut
+ * mieux qu'un bandeau d'erreur sur une information d'appoint.
+ */
+export function useTerritories() {
+  const [territories, setTerritories] = useState<Territory[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    loadTerritories()
+      .then((t) => alive && setTerritories(t))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const sectors = useMemo(() => buildSectorIndex(territories), [territories]);
+  const coverage = useMemo(() => coverageByStaff(territories), [territories]);
+
+  return { territories, sectors, coverage };
 }
 
 /* ------------------------------------------------------------------- leads */

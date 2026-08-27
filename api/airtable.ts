@@ -33,6 +33,7 @@ const ALLOWED_TABLES = new Set([
   'tblcgBrFfVCBrczdl', // Demandes de contact
   'tblg8uig0z4oPUC1x', // Leads Solaires
   'tblySHLLDvHjk2ktK', // RH
+  'tblw11IuaIggSkNu5', // Sectorisation commerciale
 ]);
 
 /**

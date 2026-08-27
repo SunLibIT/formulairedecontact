@@ -40,7 +40,7 @@ import {
   TopProgressBar,
 } from './components/ui';
 import { useDeepLink } from './hooks/useDeepLink';
-import { useLeads, useStaff, type LeadTable } from './hooks/useLeads';
+import { useLeads, useStaff, useTerritories, type LeadTable } from './hooks/useLeads';
 import { useSelection } from './hooks/useSelection';
 import { useViewPreference } from './hooks/useViewPreference';
 import { useViewer } from './hooks/useViewer';
@@ -60,6 +60,7 @@ import {
 } from './lib/filters';
 import type { Lead } from './lib/records';
 import { STATUS_TONE, type Status } from './lib/schema';
+import { sectorKeyOf } from './lib/territories';
 import { WRITE_TARGET } from './lib/writeTargets';
 
 /** Nombre de cartes rendues d'un coup — le reste à la demande. */
@@ -76,6 +77,9 @@ const TAB_LABEL: Record<View, string> = {
 
 export default function App() {
   const { staff, byId, error: staffError } = useStaff();
+  // Sectorisation commerciale : oriente les listes de collaborateurs vers le
+  // commercial du département de la demande. Absente, tout reste utilisable.
+  const { sectors, coverage } = useTerritories();
   // Identité transmise par l'hôte Softr : conditionne l'action « M'assigner ».
   const viewer = useViewer(staff);
   const [tab, setTab] = useState<View>('contact');
@@ -185,6 +189,25 @@ export default function App() {
   // action groupée ne touche jamais une ligne hors écran.
   const visibleIds = useMemo(() => sorted.map((l) => l.id), [sorted]);
   const selection = useSelection(visibleIds);
+
+  /**
+   * Secteur commun à la sélection, pour l'assignation groupée.
+   *
+   * `null` dès que deux départements se mêlent : le cas utile est celui d'un
+   * lot filtré sur un département, où mettre son commercial en tête épargne
+   * une recherche. Sur un lot hétérogène, mettre en avant l'un des secteurs
+   * orienterait l'assignation des demandes qui relèvent des autres.
+   */
+  const bulkSector = useMemo(() => {
+    if (!selection.count) return null;
+    const keys = new Set<string>();
+    for (const lead of sorted) {
+      if (selection.ids.has(lead.id)) keys.add(sectorKeyOf(lead));
+      if (keys.size > 1) return null;
+    }
+    const [key] = [...keys];
+    return key ? sectors.get(key) ?? null : null;
+  }, [selection.count, selection.ids, sorted, sectors]);
 
   /** Bascule un statut depuis une tuile : re-cliquer désélectionne. */
   const toggleStatus = (status: Status) =>
@@ -530,6 +553,8 @@ export default function App() {
           <BulkActionBar
             count={selection.count}
             staff={staff.filter((m) => m.active)}
+            sector={bulkSector}
+            coverage={coverage}
             onApply={applyBulk}
             onClear={selection.clear}
           />
@@ -541,6 +566,8 @@ export default function App() {
           lead={assigning}
           staff={staff.filter((m) => m.active)}
           viewerStaffId={viewer.staff?.id ?? null}
+          sectors={sectors}
+          coverage={coverage}
           onClose={() => setAssigning(null)}
           onAssign={assign}
         />
@@ -550,6 +577,8 @@ export default function App() {
         <LeadModal
           lead={selected}
           staff={staff}
+          sectors={sectors}
+          coverage={coverage}
           onClose={() => setSelected(null)}
           onSaved={onSaved}
         />

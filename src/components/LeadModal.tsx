@@ -48,6 +48,7 @@ import {
   type Priority,
   type Status,
 } from '../lib/schema';
+import { sectorForLead, staffOptionsFor, type SectorIndex } from '../lib/territories';
 import { TONE_CLASS } from '../lib/tones';
 import { WRITE_TARGET } from '../lib/writeTargets';
 import { SearchableSelect } from './SearchableSelect';
@@ -56,12 +57,16 @@ import { Callout, PriorityBadge, RelativeDate, SecondaryButton, StatusBadge } fr
 interface Props {
   lead: Lead;
   staff: StaffMember[];
+  /** Sectorisation commerciale. Vide tant qu'elle n'est pas chargée. */
+  sectors: SectorIndex;
+  /** Départements couverts par collaborateur. */
+  coverage: ReadonlyMap<string, string[]>;
   onClose: () => void;
   /** Applique le changement dans la liste sans rechargement complet. */
   onSaved: (patch: Partial<Lead>) => void;
 }
 
-export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
+export function LeadModal({ lead, staff, sectors, coverage, onClose, onSaved }: Props) {
   const [status, setStatus] = useState<Status>(lead.status);
   const [priority, setPriority] = useState<Priority>(lead.priority);
   const [partner, setPartner] = useState(lead.partner);
@@ -86,6 +91,15 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
   const activeStaff = useMemo(
     () => staff.filter((s) => s.active || lead.assigneeIds.includes(s.id)),
     [staff, lead.assigneeIds],
+  );
+
+  // Même mise en avant que dans la modale d'assignation : le commercial du
+  // département de la demande est remonté en tête, le reste de la liste garde
+  // son ordre alphabétique.
+  const sector = sectorForLead(lead, sectors);
+  const assigneeOptions = useMemo(
+    () => staffOptionsFor(activeStaff, sector, coverage),
+    [activeStaff, sector, coverage],
   );
 
   const persist = async (overrides: Partial<{ status: Status }> = {}) => {
@@ -279,11 +293,9 @@ export function LeadModal({ lead, staff, onClose, onSaved }: Props) {
                     searchPlaceholder="Rechercher un collaborateur…"
                     value={assigneeId}
                     onChange={setAssigneeId}
-                    options={activeStaff.map((s) => ({
-                      value: s.id,
-                      label: s.name,
-                      hint: s.group,
-                    }))}
+                    options={assigneeOptions}
+                    pinnedLabel={sector ? `Secteur ${sector.code}` : undefined}
+                    restLabel="Autres collaborateurs"
                   />
                 </Label>
               </div>

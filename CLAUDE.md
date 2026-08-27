@@ -52,6 +52,7 @@ Typeform ──webhook──► api/typeform-webhook ──► Airtable
 | `lib/kpi.ts` | distributions, summary, per-assignee load, period comparison |
 | `lib/dates.ts` | calendar-day arithmetic. The only module that knows about time zones |
 | `lib/geo.ts` | postal code and department normalisation |
+| `lib/territories.ts` | sales territories: department → sales rep, staff options for a lead |
 | `lib/leadActions.ts` | rules shared by both views (priority edge, category label) |
 | `lib/tones.ts` | the colour code rendered as classes, fills and icons |
 | `lib/csv.ts` | CSV serialisation, French number formats, download |
@@ -247,6 +248,47 @@ rules would drift from the view's. `lib/csv.ts` holds the shared serialisation.
   go to find the tail.
 - `Statut non reconnu` is exported even at zero: it is an integrity check, since those rows
   count in the total but in no status.
+
+### Sales territories
+
+Since 2026-08-27 the base carries **Sectorisation commerciale**
+(`tblw11IuaIggSkNu5`): one row per metropolitan department — 95 rows, 8 sales reps — with
+the rep who covers it as a **link** to RH. Nothing of the sort existed anywhere before; do
+not confuse it with the « Département couvert » fields on the installer tables, which
+describe partner fitters, not reps.
+
+`lib/territories.ts` reads it and answers one question: *who covers this request?* It never
+writes. The sector is a recommendation surfaced in the UI — it is not copied onto the lead,
+and it does not constrain what gets written.
+
+- **Two conventions come from the table itself.** `Code département` is **text**, two
+  characters, leading zero included (« 01 »): a number would be pre-filled to 0 by an
+  Airtable n8n node in update / defineBelow mode and the codes would be wiped. Corsica is
+  « 20 », not 2A/2B, to match the `Département` field on contact requests, which is only
+  the first two digits of the postal code. `sectorKey` folds a stray 2A/2B back to « 20 »
+  so such a row could still be matched.
+- **Matching is on two characters, on both sides.** `departmentFromPostalCode` returns
+  three digits overseas, where the department genuinely is 971…978, while the Airtable
+  column holds two. Both are truncated to two, so a 974 request looks up « 97 » — which
+  matches nothing, since the DOM are not sectorised. The modal says so (« département 97,
+  hors sectorisation ») rather than proposing a metropolitan rep at random. Adding a « 97 »
+  row, or a fallback, is still open.
+- **A lead's department goes through `departmentCodeOf`**, field first and postal code as
+  fallback: solar leads have no `Département` column, and part of the historical contact
+  import has it empty while the postal code is filled.
+- **The three places that list staff share `staffOptionsFor`**: the assign modal, the full
+  record and the bulk bar. It marks the sector rep as `pinned`, hints « Secteur 33 » on
+  that row and the covered departments on the others — in an assignment list a territory
+  says more than « Commercial ». `SearchableSelect` keeps its alphabetical sort *inside*
+  each group, so pinning splits the list in two instead of reordering it.
+- The bulk bar only pins when the **whole selection shares one sector**. On a mixed batch
+  the pin is dropped: highlighting one department's rep would steer the assignment of rows
+  that belong to the others.
+- Like every other table, it has to be listed in `ALLOWED_TABLES` in `api/airtable.ts`,
+  or the proxy refuses to serve it.
+- The table is cached at module level like RH — 95 rows that change when the sales
+  organisation changes. A load failure is swallowed on purpose: the UI loses the sector
+  hint and stays usable, which beats an error banner over a secondary signal.
 
 ### Colour and icons
 

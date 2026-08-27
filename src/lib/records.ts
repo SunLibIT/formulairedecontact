@@ -9,7 +9,7 @@
  */
 import type { AirtableRecord } from './airtable';
 import { departmentFromPostalCode, normalisePostalCode } from './geo';
-import { CONTACT, LEAD, STAFF, type Priority, type Status } from './schema';
+import { CONTACT, LEAD, STAFF, TERRITORY, type Priority, type Status } from './schema';
 
 export type LeadSource = 'contact' | 'solar';
 
@@ -18,6 +18,18 @@ export interface StaffMember {
   name: string;
   email: string;
   group: string;
+  active: boolean;
+}
+
+/** Un département de la sectorisation commerciale et le commercial qui le couvre. */
+export interface Territory {
+  id: string;
+  /** Code sur deux caractères, zéro initial compris — « 01 », « 20 » pour la Corse. */
+  code: string;
+  name: string;
+  region: string;
+  /** Identifiants RH liés. Plusieurs commerciaux sur un même département est légal. */
+  staffIds: string[];
   active: boolean;
 }
 
@@ -122,6 +134,28 @@ export function toStaffMember(record: AirtableRecord): StaffMember {
     email: str(record.fields[STAFF.email]),
     group: str(record.fields[STAFF.group]),
     active: record.fields[STAFF.inactive] !== true,
+  };
+}
+
+/**
+ * Une ligne de sectorisation.
+ *
+ * Le code est relu par `str` puis retaillé : la colonne est un texte, mais un
+ * import ou une automatisation peut y laisser « 1 » là où la table dit « 01 ».
+ * On restitue le zéro plutôt que de rater le rapprochement en silence.
+ */
+export function toTerritory(record: AirtableRecord): Territory {
+  const raw = str(record.fields[TERRITORY.code]).trim();
+  return {
+    id: record.id,
+    code: raw.length === 1 ? `0${raw}` : raw,
+    name: str(record.fields[TERRITORY.name]),
+    region: str(record.fields[TERRITORY.region]),
+    staffIds: ids(record.fields[TERRITORY.salesRep]),
+    // Une ligne sans case cochée est traitée comme active : le défaut d'une
+    // case Airtable est « vide », et un département muet vaudrait mieux qu'un
+    // département sans commercial.
+    active: record.fields[TERRITORY.active] !== false,
   };
 }
 

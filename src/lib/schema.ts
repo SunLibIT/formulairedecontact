@@ -19,6 +19,8 @@ export const TABLES = {
   solarLeads: 'tblg8uig0z4oPUC1x',
   /** Collaborateurs SunLib, cible des champs « Assigné à ». */
   staff: 'tblySHLLDvHjk2ktK',
+  /** Sectorisation commerciale : un département, le commercial qui le couvre. */
+  territories: 'tblw11IuaIggSkNu5',
 } as const;
 
 /** Champs de la table « Demandes de contact ». */
@@ -84,6 +86,31 @@ export const LEAD = {
   assignee: 'fldmf8mnMW7VhlVuA',
   partner: 'fldwHw89pEI8SX8Kv',
   gdprConsent: 'fldADSz4AckvWiPCO',
+} as const;
+
+/**
+ * Champs de la table « Sectorisation commerciale ».
+ *
+ * Une ligne par département métropolitain — 95 lignes, 8 commerciaux — créée
+ * le 27/08/2026 à partir du fichier RH ; ce découpage n'existait auparavant
+ * dans aucune base. Ne pas le confondre avec les champs « Département
+ * couvert » des tables installateurs, qui décrivent les partenaires poseurs.
+ *
+ * `code` est un **texte** de deux caractères, zéro initial compris (« 01 »).
+ * Jamais un nombre : un node Airtable n8n en mise à jour pré-remplit les
+ * champs numériques à 0 et écraserait les codes. La Corse y vaut « 20 » et non
+ * 2A/2B, pour coller au champ « Département » des demandes, qui n'est que les
+ * deux premiers chiffres du code postal.
+ *
+ * `salesRep` est un champ de liaison vers RH : l'email du commercial se lit en
+ * lookup, il n'est jamais recopié en texte.
+ */
+export const TERRITORY = {
+  code: 'flds31Paku304s0Z6',
+  name: 'fldpSQXxlL1pLyc53',
+  region: 'fldfuhMEJgXxLujHJ',
+  salesRep: 'fldUItpTihZaVfdto',
+  active: 'fld9l52OdNgb85eQ0',
 } as const;
 
 /** Champs de la table « RH ». */

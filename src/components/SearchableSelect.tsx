@@ -13,13 +13,21 @@
  *    lecteur d'écran suive l'option survolée.
  */
 import { Check, ChevronDown, Search, X } from 'lucide-react';
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 export interface SelectOption {
   value: string;
   label: string;
   /** Complément affiché en gris, non recherché en priorité (service, rôle…). */
   hint?: string;
+  /**
+   * Remonte l'option en tête de liste, sous un intertitre.
+   *
+   * Le tri alphabétique s'applique à l'intérieur de chaque groupe : épingler ne
+   * réordonne pas la liste, il la coupe en deux. Sert au secteur commercial du
+   * département de la demande.
+   */
+  pinned?: boolean;
 }
 
 export function SearchableSelect({
@@ -29,6 +37,8 @@ export function SearchableSelect({
   emptyLabel,
   searchPlaceholder,
   ariaLabel,
+  pinnedLabel,
+  restLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -37,6 +47,10 @@ export function SearchableSelect({
   emptyLabel: string;
   searchPlaceholder: string;
   ariaLabel: string;
+  /** Intertitre du groupe épinglé. Les intertitres n'apparaissent qu'avec lui. */
+  pinnedLabel?: string;
+  /** Intertitre du reste de la liste. */
+  restLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -54,9 +68,16 @@ export function SearchableSelect({
 
   const collator = useMemo(() => new Intl.Collator('fr', { sensitivity: 'base' }), []);
 
-  // Tri alphabétique systématique, insensible aux accents et à la casse.
+  // Tri alphabétique systématique, insensible aux accents et à la casse. Les
+  // options épinglées passent devant sans perdre ce tri à l'intérieur de leur
+  // groupe : l'ordre reste prévisible, seule la coupure change.
   const sorted = useMemo(
-    () => [...options].sort((a, b) => collator.compare(a.label, b.label)),
+    () =>
+      [...options].sort(
+        (a, b) =>
+          Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) ||
+          collator.compare(a.label, b.label),
+      ),
     [options, collator],
   );
 
@@ -70,6 +91,20 @@ export function SearchableSelect({
 
   /** L'option vide figure toujours en tête, et n'est pas filtrable. */
   const rows: SelectOption[] = [{ value: '', label: emptyLabel }, ...filtered];
+
+  // Pas d'intertitre s'il ne reste rien d'épinglé après filtrage : une section
+  // « Secteur » vide laisserait croire que le département n'est pas couvert.
+  const showGroups = Boolean(pinnedLabel) && filtered.some((o) => o.pinned);
+
+  /** Intertitre à poser au-dessus de la ligne `i`, s'il y en a un. */
+  const groupLabel = (i: number): string | null => {
+    if (!showGroups) return null;
+    const row = rows[i];
+    const prev = rows[i - 1];
+    if (row?.pinned && !prev?.pinned) return pinnedLabel ?? null;
+    if (!row?.pinned && prev?.pinned) return restLabel ?? null;
+    return null;
+  };
 
   const selected = options.find((o) => o.value === value);
 
@@ -213,28 +248,44 @@ export function SearchableSelect({
             {rows.map((row, i) => {
               const isSelected = row.value === value;
               const isCursor = i === cursor;
+              const header = groupLabel(i);
               return (
-                <li
-                  key={row.value || '__empty__'}
-                  id={`${listId}-${i}`}
-                  role="option"
-                  aria-selected={isSelected}
-                  onMouseEnter={() => setCursor(i)}
-                  onClick={() => commit(row.value)}
-                  className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm ${
-                    isCursor ? 'bg-teal-soft' : ''
-                  } ${isSelected ? 'font-semibold text-teal-ink' : 'text-ink'}`}
-                >
-                  <Check
-                    className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'opacity-100' : 'opacity-0'}`}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{row.label}</span>
-                  {row.hint && (
-                    <span className="ml-auto shrink-0 truncate text-xs text-muted">{row.hint}</span>
+                <Fragment key={row.value || '__empty__'}>
+                  {header && (
+                    <li
+                      role="presentation"
+                      className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted"
+                    >
+                      {header}
+                    </li>
                   )}
-                </li>
+                  <li
+                    id={`${listId}-${i}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    onMouseEnter={() => setCursor(i)}
+                    onClick={() => commit(row.value)}
+                    className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm ${
+                      isCursor ? 'bg-teal-soft' : ''
+                    } ${isSelected ? 'font-semibold text-teal-ink' : 'text-ink'}`}
+                  >
+                    <Check
+                      className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'opacity-100' : 'opacity-0'}`}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{row.label}</span>
+                    {row.hint && (
+                      <span
+                        className={`ml-auto shrink-0 truncate text-xs ${
+                          row.pinned ? 'font-medium text-teal-ink' : 'text-muted'
+                        }`}
+                      >
+                        {row.hint}
+                      </span>
+                    )}
+                  </li>
+                </Fragment>
               );
             })}
             {filtered.length === 0 && query && (

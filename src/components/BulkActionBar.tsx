@@ -18,6 +18,7 @@ import {
   type Priority,
   type Status,
 } from '../lib/schema';
+import { staffOptionsFor, type Sector } from '../lib/territories';
 import { SearchableSelect } from './SearchableSelect';
 import { SecondaryButton } from './ui';
 
@@ -36,11 +37,23 @@ export interface BulkOutcome {
 export function BulkActionBar({
   count,
   staff,
+  sector,
+  coverage,
   onApply,
   onClear,
 }: {
   count: number;
   staff: StaffMember[];
+  /**
+   * Secteur commun à toute la sélection, s'il y en a un.
+   *
+   * `null` dès que deux départements se mêlent : mettre en avant le commercial
+   * d'un seul d'entre eux orienterait l'assignation d'un lot qui ne le
+   * concerne pas.
+   */
+  sector: Sector | null;
+  /** Départements couverts par collaborateur. */
+  coverage: ReadonlyMap<string, string[]>;
   /** Applique la modification. `signal` permet l'interruption. */
   onApply: (
     patch: BulkPatch,
@@ -111,8 +124,10 @@ export function BulkActionBar({
               onChange={(id) => void apply({ assigneeId: id || null })}
               options={[
                 { value: '', label: 'Retirer l’assignation' },
-                ...staff.map((s) => ({ value: s.id, label: s.name, hint: s.group })),
+                ...staffOptionsFor(staff, sector, coverage),
               ]}
+              pinnedLabel={sector ? `Secteur ${sector.code}` : undefined}
+              restLabel="Autres collaborateurs"
             />
           </div>
 
