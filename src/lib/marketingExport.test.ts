@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildMarketingExport,
+  dedupeByEmail,
   departmentCode,
   eligibleForCampaign,
   exportFilename,
@@ -10,8 +11,9 @@ import {
   normalisePostalCode,
   phoneE164,
   quarterKey,
-  toCsv,
+
 } from './marketingExport';
+import { toCsv } from './csv';
 import type { Lead } from './records';
 
 /** Lead minimal complet, à surcharger champ par champ dans chaque test. */
@@ -195,34 +197,103 @@ describe('normaliseEmail', () => {
   });
 });
 
+describe('dedupeByEmail', () => {
+  it('garde la demande la plus récente de chaque adresse', () => {
+    // La ligne retenue porte les colonnes dérivées : garder une demande
+    // périmée segmenterait la personne sur un état qui n'est plus le sien.
+    const { kept, merged } = dedupeByEmail([
+      lead({ id: 'vieux', email: 'a@b.fr', date: '2026-01-10T00:00:00.000Z' }),
+      lead({ id: 'recent', email: 'a@b.fr', date: '2026-08-10T00:00:00.000Z' }),
+      lead({ id: 'moyen', email: 'a@b.fr', date: '2026-04-10T00:00:00.000Z' }),
+    ]);
+    expect(kept.map((l) => l.id)).toEqual(['recent']);
+    expect(merged).toBe(2);
+  });
+
+  it('compte les demandes portées par chaque adresse', () => {
+    const { requests } = dedupeByEmail([
+      lead({ id: 'x1', email: 'a@b.fr', date: '2026-01-10T00:00:00.000Z' }),
+      lead({ id: 'x2', email: 'a@b.fr', date: '2026-08-10T00:00:00.000Z' }),
+      lead({ id: 'y', email: 'c@d.fr' }),
+    ]);
+    expect(requests.get('x2')).toBe(2);
+    expect(requests.get('y')).toBe(1);
+  });
+
+  it('préserve l’ordre de la liste reçue', () => {
+    const { kept } = dedupeByEmail([
+      lead({ id: 'a', email: 'a@b.fr' }),
+      lead({ id: 'b', email: 'b@b.fr' }),
+      lead({ id: 'c', email: 'a@b.fr', date: '2020-01-01T00:00:00.000Z' }),
+    ]);
+    expect(kept.map((l) => l.id)).toEqual(['a', 'b']);
+  });
+
+  it('ne fusionne jamais deux lignes sans email', () => {
+    // Elles n'ont pas de clé commune : les regrouper confondrait deux
+    // personnes différentes.
+    const { kept, merged } = dedupeByEmail([
+      lead({ id: 'a', email: '' }),
+      lead({ id: 'b', email: '  ' }),
+    ]);
+    expect(kept).toHaveLength(2);
+    expect(merged).toBe(0);
+  });
+
+  it('est stable à date égale : la première rencontrée gagne', () => {
+    const { kept } = dedupeByEmail([
+      lead({ id: 'first', email: 'a@b.fr', date: '2026-05-05T00:00:00.000Z' }),
+      lead({ id: 'second', email: 'a@b.fr', date: '2026-05-05T00:00:00.000Z' }),
+    ]);
+    expect(kept.map((l) => l.id)).toEqual(['first']);
+  });
+});
+
 describe('buildMarketingExport', () => {
-  it('écarte les leads sans consentement et les compte', () => {
-    const result = buildMarketingExport(
-      [lead({ id: 'a' }), lead({ id: 'b', gdprConsent: false }), lead({ id: 'c' })],
-      NOW,
-    );
-    expect(result.rows).toHaveLength(2);
-    expect(result.excluded).toBe(1);
+  /** Trois adresses distinctes, dont une sans consentement. */
+  const mixed = () => [
+    lead({ id: 'a', email: 'a@b.fr' }),
+    lead({ id: 'b', email: 'b@b.fr', gdprConsent: false }),
+    lead({ id: 'c', email: 'c@b.fr' }),
+  ];
+
+  it('exporte toute la liste, consentement ou non', () => {
+    // Le consentement ne filtre rien : il est reporté en colonne, pas
+    // utilisé comme critère de sélection.
+    const result = buildMarketingExport(mixed(), { now: NOW });
+    expect(result.rows).toHaveLength(3);
+    expect(result.merged).toBe(0);
+  });
+
+  it('reporte le consentement en colonne', () => {
+    const { headers, rows } = buildMarketingExport(mixed(), { now: NOW });
+    const col = headers.indexOf('Consentement RGPD');
+    expect(rows.map((r) => r[col])).toEqual(['Oui', 'Non', 'Oui']);
   });
 
   it('signale les lignes sans email sans les filtrer', () => {
-    const result = buildMarketingExport([lead({ email: '' }), lead()], NOW);
+    const result = buildMarketingExport([lead({ email: '' }), lead()], { now: NOW });
     expect(result.rows).toHaveLength(2);
     expect(result.withoutEmail).toBe(1);
     expect(result.uniqueEmails).toBe(1);
   });
 
-  it('compte les adresses distinctes, casse et espaces ignorés', () => {
+  it('fusionne les doublons, casse et espaces ignorés', () => {
     const result = buildMarketingExport(
-      [lead({ email: 'a@b.fr' }), lead({ email: ' A@B.FR ' }), lead({ email: 'c@d.fr' })],
-      NOW,
+      [
+        lead({ id: 'a', email: 'a@b.fr' }),
+        lead({ id: 'b', email: ' A@B.FR ' }),
+        lead({ id: 'c', email: 'c@d.fr' }),
+      ],
+      { now: NOW },
     );
-    expect(result.rows).toHaveLength(3); // les doublons restent dans le fichier
+    expect(result.rows).toHaveLength(2);
+    expect(result.merged).toBe(1);
     expect(result.uniqueEmails).toBe(2);
   });
 
   it('remplit les colonnes dérivées attendues', () => {
-    const { headers, rows } = buildMarketingExport([lead()], NOW);
+    const { headers, rows } = buildMarketingExport([lead()], { now: NOW });
     const cell = (header: string) => rows[0][headers.indexOf(header)];
 
     expect(cell('Email')).toBe('jean.dupont@example.com');
@@ -238,19 +309,36 @@ describe('buildMarketingExport', () => {
     expect(cell('Mois')).toBe('2026-08');
     expect(cell('Trimestre')).toBe('2026-T3');
     expect(cell('Source')).toBe('Formulaire de contact');
+    expect(cell('Demandes')).toBe('1');
+  });
+
+  it('reporte le nombre de demandes sur la ligne conservée', () => {
+    const { headers, rows } = buildMarketingExport(
+      [
+        lead({ id: 'vieux', email: 'a@b.fr', date: '2026-02-01T00:00:00.000Z' }),
+        lead({ id: 'recent', email: 'A@B.FR', date: '2026-08-01T00:00:00.000Z' }),
+      ],
+      { now: NOW },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0][headers.indexOf('Demandes')]).toBe('2');
+    // La ligne retenue est la récente : c'est sa date qui doit ressortir.
+    expect(rows[0][headers.indexOf('Date de la demande')]).toBe('2026-08-01');
   });
 
   it('calcule toutes les lignes au même instant', () => {
     // `now` injecté : sans lui l'ancienneté dépendrait de l'heure d'exécution.
-    const { headers, rows } = buildMarketingExport([lead(), lead({ id: 'b' })], NOW);
+    const { headers, rows } = buildMarketingExport(
+      [lead({ email: 'a@b.fr' }), lead({ id: 'b', email: 'b@b.fr' })],
+      { now: NOW },
+    );
     const age = headers.indexOf('Ancienneté (jours)');
     expect(rows[0][age]).toBe(rows[1][age]);
   });
 
-  it('produit un fichier à en-têtes seuls quand rien n’est éligible', () => {
-    const result = buildMarketingExport([lead({ gdprConsent: false })], NOW);
+  it('produit un fichier à en-têtes seuls sur une liste vide', () => {
+    const result = buildMarketingExport([], { now: NOW });
     expect(result.rows).toHaveLength(0);
-    expect(result.excluded).toBe(1);
     expect(toCsv(result).split('\r\n')[0]).toContain('Email');
   });
 });

@@ -8,15 +8,22 @@
  * à l'écran**, ce qui évite qu'un jour l'export et l'affichage ne racontent
  * plus la même chose.
  *
+ * Une ligne par personne : les demandes répétées sont fusionnées sur l'adresse
+ * email, en gardant la plus récente et en comptant les autres dans la colonne
+ * « Demandes ». Sur les données réelles, 440 demandes de contact se ramènent
+ * ainsi à 379 lignes.
+ *
  * Deux familles de colonnes :
  *  - les champs bruts, tels qu'Airtable les stocke ;
  *  - les colonnes **dérivées** — segment, géographie, ancienneté — calculées
  *    ici et nulle part ailleurs. Elles n'existent pas dans la base et n'ont
  *    pas à y être écrites : ce sont des vues de la donnée, pas de la donnée.
  *
- * Tout est pur et sans dépendance au DOM, sauf `downloadCsv` en fin de
- * fichier. C'est ce qui rend le contenu de l'export testable ligne à ligne.
+ * Tout est pur et sans dépendance au DOM ; la sérialisation et le
+ * téléchargement vivent dans `lib/csv.ts`. C'est ce qui rend le contenu de
+ * l'export testable ligne à ligne.
  */
+import { stamp } from './csv';
 import { ageInDays, formatPersonName } from './format';
 import { departmentCodeOf, normalisePostalCode } from './geo';
 import { categoryLabel } from './leadActions';
@@ -30,16 +37,17 @@ export { normalisePostalCode };
 /* ------------------------------------------------------- éligibilité RGPD */
 
 /**
- * Vrai si le contact peut légitimement recevoir une campagne.
+ * Vrai si le contact peut légitimement recevoir une campagne d'emailing.
  *
- * Le seul critère est le consentement recueilli à la soumission. Un
- * enregistrement sans consentement vérifiable — case décochée **ou** reprise
- * historique où la colonne est vide, indistinguables en base — n'est pas
- * exporté. Ce n'est pas un réglage : un export marketing sans base légale
- * n'est pas un export marketing dégradé, c'est une infraction.
+ * Le critère est le consentement recueilli à la soumission. Un enregistrement
+ * sans consentement vérifiable — case décochée **ou** reprise historique où la
+ * colonne est vide, indistinguables en base — n'y répond pas.
  *
- * Volontairement séparé du reste pour être lisible d'un coup d'œil, et
- * testable seul.
+ * Ce prédicat **ne filtre pas** l'export : il alimente la seule colonne
+ * « Consentement RGPD ». C'est un choix produit assumé — l'export sert d'abord
+ * à travailler la liste, et le gater sur le consentement ne renvoyait que
+ * 2 lignes sur 440, ce qui se lisait comme une panne. L'information reste donc
+ * dans le fichier, ligne à ligne, sans décider à la place de qui l'utilise.
  */
 export function eligibleForCampaign(lead: Lead): boolean {
   return lead.gdprConsent === true;
@@ -188,9 +196,21 @@ const SOURCE_LABEL: Record<LeadSource, string> = {
 
 /* -------------------------------------------------------------- colonnes */
 
+/**
+ * Ce qu'une colonne sait en plus du lead lui-même.
+ *
+ * `now` est passé plutôt que lu de l'horloge pour que toutes les lignes d'un
+ * fichier soient datées du même instant. `requests` vient du dédoublonnage :
+ * la ligne conservée doit pouvoir dire combien de demandes elle résume.
+ */
+export interface RowContext {
+  now: number;
+  requests: number;
+}
+
 interface Column {
   header: string;
-  value: (lead: Lead, now: number) => string;
+  value: (lead: Lead, ctx: RowContext) => string;
 }
 
 /**
@@ -224,9 +244,16 @@ export const MARKETING_COLUMNS: readonly Column[] = [
 
   // — Ancienneté et cadence
   { header: 'Date de la demande', value: (l) => dateOnly(l.date) },
-  { header: 'Ancienneté (jours)', value: (l, now) => String(ageInDays(l.date, now) ?? '') },
+  {
+    header: 'Ancienneté (jours)',
+    value: (l, ctx) => String(ageInDays(l.date, ctx.now) ?? ''),
+  },
   { header: 'Mois', value: (l) => monthKey(l.date) },
   { header: 'Trimestre', value: (l) => quarterKey(l.date) },
+  // Nombre de demandes fusionnées sous cette adresse. `1` pour la plupart des
+  // lignes ; au-delà, c'est un signal d'intérêt exploitable en ciblage —
+  // quelqu'un qui revient quatre fois n'est pas un contact froid.
+  { header: 'Demandes', value: (_l, ctx) => String(ctx.requests) },
 
   // — Suivi commercial, pour exclure ou prioriser une cible
   { header: 'Statut', value: (l) => l.status },
@@ -235,41 +262,116 @@ export const MARKETING_COLUMNS: readonly Column[] = [
   { header: 'Assigné à', value: (l) => l.assigneeNames.join(', ') },
   { header: 'Source', value: (l) => SOURCE_LABEL[l.source] },
   { header: 'Référence', value: (l) => l.ref },
+  // Reportée, jamais filtrante : le fichier porte l'information pour qui
+  // prépare un envoi, sans retirer de lignes à qui travaille la liste.
+  {
+    header: 'Consentement RGPD',
+    value: (l) => (eligibleForCampaign(l) ? 'Oui' : 'Non'),
+  },
 ];
 
 /* ------------------------------------------------------------ construction */
 
+/* ------------------------------------------------------- dédoublonnage */
+
+export interface Deduped {
+  /** Une ligne par adresse, dans l'ordre de la liste reçue. */
+  kept: Lead[];
+  /** Nombre de demandes portées par l'adresse d'un lead, indexé par id. */
+  requests: Map<string, number>;
+  /** Lignes absorbées par la fusion. */
+  merged: number;
+}
+
+/**
+ * Une ligne par adresse email, en conservant la demande **la plus récente**.
+ *
+ * Pourquoi la plus récente : toutes les colonnes dérivées décrivent une
+ * demande précise — ancienneté, statut, ville, segment. En garder une au
+ * hasard segmenterait la personne sur une demande périmée. La plus récente est
+ * la seule qui décrive son état actuel.
+ *
+ * Les lignes **sans email ne sont jamais fusionnées entre elles** : elles
+ * n'ont aucune clé commune, et les regrouper reviendrait à confondre des
+ * personnes différentes.
+ *
+ * L'ordre d'origine est préservé, celui de la liste affichée : le fichier se
+ * relit à côté de l'écran dont il sort.
+ */
+export function dedupeByEmail(leads: Lead[]): Deduped {
+  /** email → lead retenu jusqu'ici. */
+  const best = new Map<string, Lead>();
+  const counts = new Map<string, number>();
+
+  for (const lead of leads) {
+    const email = normaliseEmail(lead.email);
+    if (!email) continue;
+
+    counts.set(email, (counts.get(email) ?? 0) + 1);
+    const current = best.get(email);
+    // `>` et non `>=` : à date égale, la première rencontrée gagne, ce qui rend
+    // le résultat stable d'un export à l'autre.
+    if (!current || new Date(lead.date).getTime() > new Date(current.date).getTime()) {
+      best.set(email, lead);
+    }
+  }
+
+  const keptIds = new Set([...best.values()].map((l) => l.id));
+  const kept = leads.filter((l) => !normaliseEmail(l.email) || keptIds.has(l.id));
+
+  const requests = new Map<string, number>();
+  for (const lead of kept) {
+    requests.set(lead.id, counts.get(normaliseEmail(lead.email)) ?? 1);
+  }
+
+  return { kept, requests, merged: leads.length - kept.length };
+}
+
 export interface MarketingExport {
   headers: string[];
   rows: string[][];
-  /** Écartés faute de consentement vérifiable. */
-  excluded: number;
+  /** Lignes absorbées par le dédoublonnage sur l'email. */
+  merged: number;
   /**
    * Exportés mais sans adresse email : inutilisables en campagne email,
    * exploitables en SMS ou en appel. Signalé plutôt que filtré — c'est au
    * marketing de décider, pas à l'export.
    */
   withoutEmail: number;
-  /** Adresses distinctes, doublons compris dans `rows`. */
+  /**
+   * Adresses distinctes. Égal au nombre de lignes moins celles sans email,
+   * puisque `rows` est dédoublonné — conservé comme vérification, et comme
+   * chiffre à annoncer : c'est le nombre réel de destinataires.
+   */
   uniqueEmails: number;
+}
+
+export interface ExportOptions {
+  /**
+   * Instant de référence de l'extraction.
+   *
+   * Paramètre et non appel direct à l'horloge : l'ancienneté serait sinon
+   * intestable, et deux lignes du même fichier pourraient être calculées à des
+   * instants différents.
+   */
+  now?: number;
 }
 
 /**
  * Construit les lignes de l'export à partir des leads **déjà filtrés**.
  *
- * `now` est un paramètre et non un appel direct à l'horloge : l'ancienneté
- * serait sinon intestable, et deux lignes du même fichier pourraient être
- * calculées à des instants différents.
+ * Toute la liste reçue est exportée. Le seul écart possible avec l'affichage
+ * est la fusion des demandes répétées d'une même adresse.
  */
 export function buildMarketingExport(
   leads: Lead[],
-  now: number = Date.now(),
+  { now = Date.now() }: ExportOptions = {},
 ): MarketingExport {
-  const eligible = leads.filter(eligibleForCampaign);
+  const { kept, requests, merged } = dedupeByEmail(leads);
+
   const emails = new Set<string>();
   let withoutEmail = 0;
-
-  for (const lead of eligible) {
+  for (const lead of kept) {
     const email = normaliseEmail(lead.email);
     if (email) emails.add(email);
     else withoutEmail++;
@@ -277,61 +379,18 @@ export function buildMarketingExport(
 
   return {
     headers: MARKETING_COLUMNS.map((c) => c.header),
-    rows: eligible.map((lead) => MARKETING_COLUMNS.map((c) => c.value(lead, now))),
-    excluded: leads.length - eligible.length,
+    rows: kept.map((lead) =>
+      MARKETING_COLUMNS.map((c) =>
+        c.value(lead, { now, requests: requests.get(lead.id) ?? 1 }),
+      ),
+    ),
+    merged,
     withoutEmail,
     uniqueEmails: emails.size,
   };
 }
 
-/* -------------------------------------------------------------------- CSV */
-
-/** Séparateur point-virgule : c'est celui qu'attend Excel en locale française. */
-const DELIMITER = ';';
-
-/** Marque d'ordre des octets, écrite en tête de fichier. Voir `toCsv`. */
-const BOM = '﻿';
-
-/**
- * Neutralise une cellule que le tableur pourrait exécuter.
- *
- * Les données viennent d'un formulaire public : un visiteur peut saisir
- * `=HYPERLINK(...)` dans un champ nom, et Excel l'évaluerait à l'ouverture.
- * Le préfixe apostrophe force l'interprétation en texte.
- *
- * On ne neutralise **pas** les valeurs purement numériques, alors qu'elles
- * commencent parfois par `+` ou `-` : un `+33612345678` n'est pas exécutable,
- * et le préfixer produirait exactement l'apostrophe parasite que `formatPhone`
- * doit aujourd'hui nettoyer à l'import. La règle est donc : caractère de tête
- * dangereux **et** contenu non numérique.
- */
-function sanitiseCell(value: string): string {
-  if (!value) return '';
-  if (!/^[=+\-@\t\r]/.test(value)) return value;
-  if (/^[+-]?[\d\s().+-]+$/.test(value)) return value;
-  return `'${value}`;
-}
-
-/** Entoure de guillemets uniquement quand c'est nécessaire, et double les guillemets. */
-function quote(value: string): string {
-  if (!/[";\r\n]/.test(value) && value === value.trim()) return value;
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
-/**
- * Sérialise un export en CSV.
- *
- * Fins de ligne CRLF conformes à la RFC 4180, et **BOM UTF-8** en tête : sans
- * lui, Excel sous Windows lit le fichier en ANSI et rend « Sébastien » en
- * « SÃ©bastien ». Le BOM est le seul moyen fiable de l'éviter sans passer par
- * l'assistant d'importation.
- */
-export function toCsv({ headers, rows }: Pick<MarketingExport, 'headers' | 'rows'>): string {
-  const line = (cells: string[]) =>
-    cells.map((c) => quote(sanitiseCell(c))).join(DELIMITER);
-
-  return `${BOM}${[headers, ...rows].map(line).join('\r\n')}\r\n`;
-}
+/* -------------------------------------------------------------- fichier */
 
 /**
  * Nom de fichier daté, sans espace ni accent.
@@ -341,40 +400,6 @@ export function toCsv({ headers, rows }: Pick<MarketingExport, 'headers' | 'rows
  * comportement voulu — on veut la dernière liste, pas douze variantes.
  */
 export function exportFilename(source: LeadSource, now: number = Date.now()): string {
-  const stamp = new Date(now).toISOString().slice(0, 10);
   const scope = source === 'contact' ? 'demandes-contact' : 'leads-simulateur';
-  return `sunlib-marketing-${scope}-${stamp}.csv`;
-}
-
-/**
- * Déclenche le téléchargement du fichier.
- *
- * Seule fonction du module à toucher le DOM, et le seul endroit à adapter si
- * l'export devait un jour passer par le serveur.
- *
- * L'application tourne dans un iframe tiers Softr : le téléchargement suppose
- * que l'iframe autorise `allow-downloads`. Si ce n'est pas le cas le navigateur
- * bloque silencieusement, sans exception à intercepter — l'appelant ne peut
- * donc pas distinguer ce cas d'un succès, et c'est pourquoi l'interface
- * annonce le nombre de lignes exportées : voir le compte confirme au moins que
- * le fichier a été produit.
- */
-export function downloadCsv(filename: string, csv: string): boolean {
-  try {
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.rel = 'noopener';
-    document.body.append(link);
-    link.click();
-    link.remove();
-    // Révocation différée : Safari annule un téléchargement encore en vol si
-    // l'URL disparaît dans la même tâche que le clic.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    return true;
-  } catch {
-    return false;
-  }
+  return `sunlib-marketing-${scope}-${stamp(now)}.csv`;
 }

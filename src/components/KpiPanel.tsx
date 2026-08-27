@@ -25,6 +25,7 @@ import {
 import type { Lead } from '../lib/records';
 import { STATUSES, STATUS_TONE } from '../lib/schema';
 import { ChartCard, Columns, HBars, Meter, type BarDatum } from './Charts';
+import { KpiExportButton } from './KpiExportButton';
 import { SearchableSelect } from './SearchableSelect';
 import { Callout, SegmentedFilter, StatTile } from './ui';
 
@@ -132,6 +133,12 @@ export function KpiPanel({
 
   const periodLabel = filters.from || filters.to ? 'sur la période' : 'depuis le début';
 
+  /** Libellé du collaborateur filtré, pour que le fichier nomme son périmètre. */
+  const assigneeLabel =
+    assignee === 'unassigned'
+      ? 'Non assignées'
+      : (staffOptions.find((o) => o.value === assignee)?.label ?? '');
+
   return (
     <div className="space-y-4">
       {/* Filtres propres au panneau, sur une seule ligne au-dessus des
@@ -161,6 +168,21 @@ export function KpiPanel({
             ]}
           />
         </label>
+
+        {/* Poussé à droite : l'export n'est pas un filtre, il agit sur le
+            résultat des deux précédents. */}
+        <div className="ml-auto">
+          <KpiExportButton
+            leads={current}
+            scope={{
+              source: SOURCES.find((s) => s.value === source)?.label ?? source,
+              assignee: assignee ? assigneeLabel : '',
+              from: filters.from,
+              to: filters.to,
+              previousTotal: previous?.length ?? null,
+            }}
+          />
+        </div>
       </div>
 
       {current.length === 0 ? (

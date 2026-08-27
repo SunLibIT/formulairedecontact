@@ -54,7 +54,9 @@ Typeform ──webhook──► api/typeform-webhook ──► Airtable
 | `lib/geo.ts` | postal code and department normalisation |
 | `lib/leadActions.ts` | rules shared by both views (priority edge, category label) |
 | `lib/tones.ts` | the colour code rendered as classes, fills and icons |
-| `lib/marketingExport.ts` | derived campaign columns, CSV serialisation, GDPR gate |
+| `lib/csv.ts` | CSV serialisation, French number formats, download |
+| `lib/marketingExport.ts` | derived campaign columns, dedup on email |
+| `lib/kpiExport.ts` | dashboard indicators as a long table |
 | `hooks/` | loading, staff cache, view preference, selection, dialog mechanics |
 | `components/` | presentation only |
 
@@ -190,29 +192,61 @@ Two smaller invariants worth keeping:
 `lib/kpi.test.ts` and `lib/dates.test.ts` pin all of the above. They did not exist while the
 bugs did, which is the whole story.
 
-### Marketing export
+### Exports
 
-`lib/marketingExport.ts` serialises **the list currently on screen** — same filters, same
-period, same sort — into a CSV. It has no selection logic of its own, deliberately: a
-second set of rules would drift from the view's.
+Two CSV exports, both serialising **what is currently on screen** — same filters, same
+period, same sort. Neither has selection logic of its own, deliberately: a second set of
+rules would drift from the view's. `lib/csv.ts` holds the shared serialisation.
 
-- **Consent gates the export, and nothing else does.** `eligibleForCampaign` keeps only
-  records whose GDPR checkbox is `true`. A cleared box and a legacy row with an empty
-  column are indistinguishable in Airtable, so both are dropped. The count of excluded
-  rows is shown next to the button *before* the click — an export shorter than the list
-  with no explanation reads as a bug.
-- The webhook only started writing `gdprConsent` on 2026-08-26, so nearly every
-  historical contact request has it empty. At the time of writing: **2 of 440** contact
-  requests carry consent, against **249 of 343** solar leads. The feature is correct; the
-  contact table simply has no consent history to export yet.
+#### `lib/csv.ts`
+
+- Writes a UTF-8 BOM (Excel reads the file as ANSI without it), uses `;` and CRLF.
+- Prefixes cells starting with `=` or `@` with an apostrophe. The data comes from a public
+  form, so a `=HYPERLINK(…)` in a name field would otherwise be evaluated on open. Purely
+  numeric values are left alone, so `+33…` phone numbers keep no stray apostrophe.
+- `frNumber` / `frPercent` emit a **decimal comma**. Not cosmetic: in a French locale
+  Excel reads `42.5` as text, and a text column will not sum.
+- Downloads need `allow-downloads` on the Softr iframe. A blocked download fails silently,
+  with no exception to catch — which is why both buttons report a count.
+
+#### `lib/marketingExport.ts` — contact list
+
+- **Consent does not filter the export**, by explicit product decision. Every row on
+  screen is exported. A `Consentement RGPD` column reports Oui/Non per row, so the
+  information is in the file without gating it — whoever sends a campaign decides what to
+  do with it.
+  The earlier behaviour gated the export on consent, which made the contact tab export 2
+  rows out of 440 and read as a breakage: the webhook only started writing `gdprConsent`
+  on 2026-08-26, so nearly every historical contact request has it empty. For reference:
+  **2 of 440** contact requests carry consent, against **249 of 343** solar leads.
+- **One row per person.** `dedupeByEmail` merges repeat requests on the normalised email
+  and keeps the **most recent** one, because every derived column describes a specific
+  request — keeping an arbitrary one would segment someone on a stale state. A `Demandes`
+  column carries how many requests the row stands for, which doubles as an interest signal.
+  Rows without an email are never merged with each other: they share no key. Real data: 440
+  contact requests collapse to **379 rows** (61 merged), and 249 consenting solar leads to
+  **214** (27 addresses repeat, one of them four times).
 - Derived columns — segment, department, age, month, quarter — are computed here and
   written nowhere. They are views of the data, not data.
-- `toCsv` writes a UTF-8 BOM (Excel reads the file as ANSI without it), uses `;` and CRLF,
-  and prefixes cells starting with `=` or `@` with an apostrophe. The data comes from a
-  public form, so a `=HYPERLINK(…)` in a name field would otherwise be evaluated on open.
-  Purely numeric values are left alone, so `+33…` phone numbers keep no stray apostrophe.
-- Downloads need `allow-downloads` on the Softr iframe. A blocked download fails
-  silently, with no exception to catch — which is why the UI reports the row count.
+
+#### `lib/kpiExport.ts` — dashboard
+
+- Reuses `lib/kpi.ts`'s aggregation functions, the same ones the tab renders. There is no
+  second qualification-rate calculation here, only a layout of the first — that is what
+  keeps file and screen from disagreeing.
+- **Long table**, four columns (`Bloc;Indicateur;Valeur;Part (%)`), not a wide one. A long
+  table pivots, filters by block, and takes a new indicator without rewriting the header; a
+  wide table would need one column per month and per assignee, so its shape would change
+  with every period extracted.
+- A `Contexte` block opens the file with source, assignee and period. KPIs out of their
+  scope are not interpretable — « 440 demandes » says nothing without knowing over what.
+- Distributions are divided by their **coverage**, not the total, exactly as on screen: 283
+  of 440 contact requests carry no motive, so dividing by 440 would give parts that never
+  sum to 100 %. Coverage is written out as `Renseigné` / `Non renseigné` so the denominator
+  is checkable. Unlike the charts, no tail is folded into « Autres » — a file is where you
+  go to find the tail.
+- `Statut non reconnu` is exported even at zero: it is an integrity check, since those rows
+  count in the total but in no status.
 
 ### Colour and icons
 
