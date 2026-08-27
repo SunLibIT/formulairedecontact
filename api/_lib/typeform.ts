@@ -108,6 +108,74 @@ export interface TypeformAnswer {
 }
 
 /**
+ * Variable calculée par le formulaire.
+ *
+ * Typeform transmet ces valeurs **hors des réponses**, dans
+ * `form_response.variables` : le score de la logique de qualification, un tag
+ * de qualité, et tout un bloc d'enrichissement société renseigné par un
+ * service tiers à la soumission (`enr_*`). Rien ne les lisait avant
+ * 2026-08-27 ; elles dormaient dans `Raw JSON`.
+ *
+ * Le champ porteur dépend du `type` : `number` pour un nombre, `text` pour du
+ * texte, `outcome_id` pour une issue de formulaire.
+ */
+export interface TypeformVariable {
+  key: string;
+  type: string;
+  number?: number;
+  text?: string;
+  outcome_id?: string;
+}
+
+/**
+ * Clés des variables d'enrichissement société.
+ *
+ * Nommées ici plutôt qu'écrites en clair dans le webhook, pour la même raison
+ * que `FIELD_REFS` : ce sont des identifiants d'un système tiers. Si
+ * l'enrichissement est désactivé côté Typeform, elles disparaissent du payload
+ * et les champs restent vides — sans erreur, comme pour une ref modifiée.
+ */
+export const VARIABLE_KEYS = {
+  score: 'score',
+  leadQuality: 'tag_lead_quality',
+  companyName: 'enr_company_name',
+  companyDomain: 'enr_company_domain',
+  companyIndustry: 'enr_company_industry',
+  companyEmployees: 'enr_company_employee_count',
+  companyRevenue: 'enr_company_annual_revenue',
+  companyLinkedIn: 'enr_company_linkedin_url',
+} as const;
+
+/** Valeur texte d'une variable, ou chaîne vide. */
+export function variableText(
+  variables: readonly TypeformVariable[],
+  key: string,
+): string {
+  const found = variables.find((v) => v.key === key);
+  return found?.text?.trim() ?? '';
+}
+
+/**
+ * Valeur numérique d'une variable, ou `undefined`.
+ *
+ * Accepte les deux formes, parce que le payload mélange les deux :
+ * `enr_company_employee_count` arrive en nombre (`23`) et
+ * `enr_company_annual_revenue` en **texte** (`"1000000"`). Rendre `undefined`
+ * plutôt que `0` est essentiel : le webhook écrit avec `typecast: false`, et
+ * un zéro fabriqué serait indiscernable d'un vrai zéro.
+ */
+export function variableNumber(
+  variables: readonly TypeformVariable[],
+  key: string,
+): number | undefined {
+  const found = variables.find((v) => v.key === key);
+  if (!found) return undefined;
+  const raw =
+    found.number ?? (found.text?.trim() ? Number(found.text.trim()) : undefined);
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+}
+
+/**
  * Première valeur renseignée parmi les refs candidates.
  *
  * L'ancienne implémentation retournait la valeur dès qu'une *réponse* existait

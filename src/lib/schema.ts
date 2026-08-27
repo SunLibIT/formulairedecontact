@@ -51,6 +51,20 @@ export const CONTACT = {
   rawJson: 'fld5f69tU2LDEx8Ni',
   /** Consentement coché dans le formulaire. Vide sur les reprises historiques. */
   gdprConsent: 'flddNjogfg4QRpqeu',
+
+  /* ----------------------------------- scoring et enrichissement Typeform
+   * Écrits par le webhook depuis `calculated` et `variables`, deux blocs que
+   * Typeform transmet **à côté** des réponses et que rien ne lisait jusqu'ici.
+   * Vides sur les 438 reprises historiques : l'information n'existe pas pour
+   * elles, elle n'était pas dans l'export Excel. */
+  score: 'fld73gLKvmodz1Ecr',
+  leadQuality: 'fldhSF087rixbmQx8',
+  companyName: 'fldzzhUYJteYZTkn4',
+  companyDomain: 'flddiNLYrRSPEl3v9',
+  companyIndustry: 'fldZOFwTHa6qnAPKD',
+  companyEmployees: 'fldemUMaP32aJfXY4',
+  companyRevenue: 'fldmMv80gHcf3YyVJ',
+  companyLinkedIn: 'fldi0d1TK7w89QeSt',
 } as const;
 
 /**

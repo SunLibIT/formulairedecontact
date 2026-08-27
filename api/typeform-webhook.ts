@@ -28,7 +28,11 @@ import {
   normaliseCountry,
   normalisePhone,
   TYPEFORM_FORMS,
+  VARIABLE_KEYS,
+  variableNumber,
+  variableText,
   type TypeformAnswer,
+  type TypeformVariable,
 } from './_lib/typeform.js';
 // Les identifiants de champs viennent du schéma partagé : une seule
 // définition pour le front et pour le webhook.
@@ -45,6 +49,10 @@ interface WebhookPayload {
     submitted_at?: string;
     answers?: TypeformAnswer[];
     hidden?: Record<string, string>;
+    /** Score de la logique de qualification. Doublonne la variable `score`. */
+    calculated?: { score?: number };
+    /** Variables du formulaire : score, tag de qualité, enrichissement société. */
+    variables?: TypeformVariable[];
   };
 }
 
@@ -176,6 +184,44 @@ export async function POST(req: Request): Promise<Response> {
 
   const formLabel = response.form_id ? FORM_LABEL[response.form_id] : undefined;
   if (formLabel) fields[CONTACT.formId] = formLabel;
+
+  /* --------------------------- scoring et enrichissement société
+   *
+   * Ces valeurs voyagent dans `calculated` et `variables`, à côté des
+   * réponses, et n'étaient pas lues : elles n'existaient qu'au fond de
+   * `Raw JSON`. Le score y est en double, `calculated.score` et la variable
+   * `score` ; on préfère le premier et on retombe sur la seconde, le repli
+   * étant gratuit.
+   *
+   * Chaque champ n'est ajouté que s'il a une valeur. C'est indispensable :
+   * l'écriture se fait avec `typecast: false`, et une chaîne vide envoyée
+   * dans un champ nombre fait échouer la requête — donc perdre la demande
+   * pour un enrichissement absent, ce qui serait absurde.
+   */
+  const variables = response.variables ?? [];
+
+  const score = response.calculated?.score ?? variableNumber(variables, VARIABLE_KEYS.score);
+  if (score !== undefined) fields[CONTACT.score] = score;
+
+  const employees = variableNumber(variables, VARIABLE_KEYS.companyEmployees);
+  if (employees !== undefined) fields[CONTACT.companyEmployees] = employees;
+
+  // Estimation d'un tiers, transmise en texte : convertie ici, ignorée si elle
+  // n'est pas un nombre exploitable.
+  const revenue = variableNumber(variables, VARIABLE_KEYS.companyRevenue);
+  if (revenue !== undefined) fields[CONTACT.companyRevenue] = revenue;
+
+  const textVariables: ReadonlyArray<readonly [string, string]> = [
+    [CONTACT.leadQuality, VARIABLE_KEYS.leadQuality],
+    [CONTACT.companyName, VARIABLE_KEYS.companyName],
+    [CONTACT.companyDomain, VARIABLE_KEYS.companyDomain],
+    [CONTACT.companyIndustry, VARIABLE_KEYS.companyIndustry],
+    [CONTACT.companyLinkedIn, VARIABLE_KEYS.companyLinkedIn],
+  ];
+  for (const [field, key] of textVariables) {
+    const value = variableText(variables, key);
+    if (value) fields[field] = value;
+  }
 
   // Garde-fou : les refs de `FIELD_REFS` désignent des questions de deux
   // formulaires précis. Branché sur un autre formulaire, le mapping ne
