@@ -21,6 +21,14 @@ export interface SelectOption {
   /** Complément affiché en gris, non recherché en priorité (service, rôle…). */
   hint?: string;
   /**
+   * Termes recherchés sans être affichés.
+   *
+   * Sert quand le complément dit autre chose que ce sur quoi on cherche : le
+   * commercial du secteur affiche « Secteur 33 », mais on doit le trouver en
+   * tapant n'importe lequel des départements qu'il couvre.
+   */
+  keywords?: string;
+  /**
    * Remonte l'option en tête de liste, sous un intertitre.
    *
    * Le tri alphabétique s'applique à l'intérieur de chaque groupe : épingler ne
@@ -85,7 +93,7 @@ export function SearchableSelect({
     const q = query.trim().toLowerCase();
     if (!q) return sorted;
     return sorted.filter((o) =>
-      `${o.label} ${o.hint ?? ''}`.toLowerCase().includes(q),
+      `${o.label} ${o.hint ?? ''} ${o.keywords ?? ''}`.toLowerCase().includes(q),
     );
   }, [sorted, query]);
 
@@ -274,10 +282,14 @@ export function SearchableSelect({
                       strokeWidth={2}
                       aria-hidden="true"
                     />
-                    <span className="truncate">{row.label}</span>
+                    {/* Le nom passe avant le complément : c'est lui qu'on
+                        choisit. C'est donc le complément qui rétrécit et se
+                        coupe quand la place manque — une liste de douze codes
+                        départements dans une barre de sélection étroite. */}
+                    <span className="shrink-0 truncate">{row.label}</span>
                     {row.hint && (
                       <span
-                        className={`ml-auto shrink-0 truncate text-xs ${
+                        className={`ml-auto min-w-0 truncate text-xs ${
                           row.pinned ? 'font-medium text-teal-ink' : 'text-muted'
                         }`}
                       >

@@ -122,7 +122,9 @@ export function BulkActionBar({
         </>
       ) : (
         <>
-          <div className="min-w-48">
+          {/* Assez large pour que les départements couverts se lisent : la
+              liste les affiche en complément de chaque nom. */}
+          <div className="min-w-64">
             <SearchableSelect
               ariaLabel="Assigner la sélection à un collaborateur"
               emptyLabel="Assigner à…"

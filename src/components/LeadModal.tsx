@@ -287,7 +287,8 @@ export function LeadModal({ lead, staff, sectors, coverage, onClose, onSaved }: 
               </Label>
 
               {/* Pleine largeur : la liste déroulante doit avoir la place
-                  d'afficher un nom complet et son service sans troncature. */}
+                  d'afficher un nom complet et les départements qu'il couvre
+                  sans troncature. */}
               <div className="sm:col-span-2">
                 <Label text="Assigné à">
                   {/* 35 collaborateurs : un select natif se parcourt à l'œil,

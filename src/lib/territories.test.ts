@@ -137,53 +137,24 @@ describe('sectorForLead', () => {
 });
 
 describe('coverageByStaff', () => {
-  it('liste départements ET régions de chaque commercial', () => {
+  it('liste les départements de chaque commercial, triés', () => {
     const coverage = coverageByStaff([
-      territory({ id: 'r1', code: '47', region: 'Nouvelle-Aquitaine', staffIds: ['recEdouard'] }),
-      territory({ id: 'r2', code: '33', region: 'Nouvelle-Aquitaine', staffIds: ['recEdouard'] }),
-      territory({ id: 'r3', code: '85', region: 'Pays de la Loire', staffIds: ['recEdouard'] }),
-      territory({ id: 'r4', code: '74', region: 'Auvergne-Rhône-Alpes', staffIds: ['recPhilippe'] }),
+      territory({ id: 'r1', code: '47', staffIds: ['recEdouard'] }),
+      territory({ id: 'r2', code: '33', staffIds: ['recEdouard'] }),
+      territory({ id: 'r3', code: '85', staffIds: ['recEdouard'] }),
+      territory({ id: 'r4', code: '74', staffIds: ['recPhilippe'] }),
     ]);
-    expect(coverage.get('recEdouard')?.codes).toEqual(['33', '47', '85']);
-    // La région ne figure qu'une fois, quel que soit le nombre de départements.
-    expect(coverage.get('recEdouard')?.regions).toEqual([
-      'Nouvelle-Aquitaine',
-      'Pays de la Loire',
-    ]);
-    expect(coverage.get('recPhilippe')?.regions).toEqual(['Auvergne-Rhône-Alpes']);
+    expect(coverage.get('recEdouard')).toEqual(['33', '47', '85']);
+    expect(coverage.get('recPhilippe')).toEqual(['74']);
   });
 
-  it('classe les régions par nombre de départements, la principale d’abord', () => {
-    // Le cas réel d'Ilan : par ordre alphabétique, l'affichage tronqué à deux
-    // régions masquerait l'Île-de-France, qui est justement la principale.
+  it('ne compte qu’une fois deux lignes de même clé', () => {
+    // La Corse, si 2A et 2B y étaient saisis séparément : les deux donnent « 20 ».
     const coverage = coverageByStaff([
-      territory({ id: 'r1', code: '18', region: 'Centre-Val de Loire', staffIds: ['recIlan'] }),
-      territory({ id: 'r2', code: '28', region: 'Centre-Val de Loire', staffIds: ['recIlan'] }),
-      territory({ id: 'r3', code: '75', region: 'Île-de-France', staffIds: ['recIlan'] }),
-      territory({ id: 'r4', code: '77', region: 'Île-de-France', staffIds: ['recIlan'] }),
-      territory({ id: 'r5', code: '78', region: 'Île-de-France', staffIds: ['recIlan'] }),
+      territory({ id: 'r1', code: '2A', staffIds: ['recIlan'] }),
+      territory({ id: 'r2', code: '2B', staffIds: ['recIlan'] }),
     ]);
-    expect(coverage.get('recIlan')?.regions).toEqual([
-      'Île-de-France',
-      'Centre-Val de Loire',
-    ]);
-  });
-
-  it('retombe sur l’alphabet français à nombre égal', () => {
-    // Un tri brut placerait « Île-de-France » après « Occitanie », le I tréma
-    // valant plus que le O en points de code.
-    const coverage = coverageByStaff([
-      territory({ id: 'r1', code: '34', region: 'Occitanie', staffIds: ['recX'] }),
-      territory({ id: 'r2', code: '75', region: 'Île-de-France', staffIds: ['recX'] }),
-    ]);
-    expect(coverage.get('recX')?.regions).toEqual(['Île-de-France', 'Occitanie']);
-  });
-
-  it('ignore une région vide sans perdre le département', () => {
-    const coverage = coverageByStaff([
-      territory({ id: 'r1', code: '33', region: '', staffIds: ['recEdouard'] }),
-    ]);
-    expect(coverage.get('recEdouard')).toEqual({ codes: ['33'], regions: [] });
+    expect(coverage.get('recIlan')).toEqual(['20']);
   });
 
   it('ignore les lignes désactivées', () => {
@@ -193,28 +164,21 @@ describe('coverageByStaff', () => {
 });
 
 describe('formatCoverage', () => {
-  const cover = (regions: string[], codes: string[] = []) => ({ codes, regions });
-
-  it('affiche les régions, qui se lisent sans effort', () => {
-    expect(formatCoverage(cover(['Nouvelle-Aquitaine']))).toBe('Nouvelle-Aquitaine');
-    expect(formatCoverage(cover(['Bretagne', 'Normandie']))).toBe('Bretagne, Normandie');
+  it('énumère les départements couverts', () => {
+    expect(formatCoverage(['33'])).toBe('33');
+    expect(formatCoverage(['33', '40', '47', '64'])).toBe('33, 40, 47, 64');
   });
 
-  it('abrège au-delà de deux régions, pour tenir sur une ligne', () => {
-    expect(formatCoverage(cover(['Bretagne', 'Normandie', 'Pays de la Loire']))).toBe(
-      'Bretagne, Normandie +1',
-    );
-  });
-
-  it('retombe sur les codes quand la région manque', () => {
-    // Cas d'une ligne de sectorisation incomplète : mieux vaut « 33, 40 » que rien.
-    expect(formatCoverage(cover([], ['33', '40', '47', '64']))).toBe('33, 40, 47, 64');
-    expect(formatCoverage(cover([], ['33', '40', '47', '64', '79']))).toBe('33, 40, 47 +2');
+  it('n’abrège pas une douzaine de départements', () => {
+    // La question posée est « couvre-t-elle le 63 ? ». Un « +9 » n'y répond
+    // pas : c'est l'affichage qui coupe s'il le faut, pas le formatage.
+    const codes = ['01', '03', '07', '15', '26', '38', '42', '43', '63', '69', '73', '74'];
+    expect(formatCoverage(codes)).toBe(codes.join(', '));
   });
 
   it('rend une chaîne vide sans couverture', () => {
     expect(formatCoverage(undefined)).toBe('');
-    expect(formatCoverage(cover([], []))).toBe('');
+    expect(formatCoverage([])).toBe('');
   });
 });
 
@@ -247,20 +211,32 @@ describe('staffOptionsFor', () => {
     expect(edouard?.hint).toBe('Secteur 33');
   });
 
-  it('situe les autres par leur région, pas par des codes', () => {
-    // C'est tout le point de la liste : « Corse » se lit, « 20 » se déchiffre.
+  it('situe les autres par leurs départements', () => {
     const ilan = staffOptionsFor(staff, sector, coverage).find((o) => o.value === 'recIlan');
     expect(ilan?.pinned).toBe(false);
-    expect(ilan?.hint).toBe('Corse');
+    expect(ilan?.hint).toBe('20');
   });
 
-  it('retombe sur le service pour un collaborateur non sectorisé', () => {
+  it('ne dit rien du service d’un collaborateur non sectorisé', () => {
+    // « Directeur » n'aide pas à choisir à qui confier une demande : pas de
+    // territoire, pas de complément.
     const options = staffOptionsFor(
       [staffMember('recAdmin', 'Alice', 'Administratif')],
       sector,
       coverage,
     );
-    expect(options[0]?.hint).toBe('Administratif');
+    expect(options[0]?.hint).toBeUndefined();
+  });
+
+  it('garde les départements du commercial du secteur cherchables', () => {
+    // On tape le numéro du client pour trouver qui le couvre. Edouard couvre
+    // 33 et 47 ; son complément dit « Secteur 33 », donc sans mots-clés une
+    // recherche sur « 47 » l'aurait exclu de sa propre liste.
+    const edouard = staffOptionsFor(staff, sector, coverage).find(
+      (o) => o.value === 'recEdouard',
+    );
+    expect(edouard?.hint).toBe('Secteur 33');
+    expect(edouard?.keywords).toBe('33, 47');
   });
 
   it('n’épingle rien sans secteur', () => {

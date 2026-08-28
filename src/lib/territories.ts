@@ -21,6 +21,7 @@
  * de colonne « Département », et une partie des demandes reprises de l'export
  * historique l'a vide alors que leur code postal est renseigné.
  */
+import { formatPersonName } from './format';
 import { departmentCodeOf } from './geo';
 import type { Lead, StaffMember, Territory } from './records';
 
@@ -99,48 +100,22 @@ export function sectorForLead(lead: Lead, index: SectorIndex): Sector | null {
   return key ? index.get(key) ?? null : null;
 }
 
-/**
- * Territoire d'un collaborateur, dans ses deux échelles.
- *
- * Les deux sont conservées parce qu'elles ne servent pas à la même chose : la
- * **région** se lit, le **département** se rapproche. Un commercial en couvre
- * une douzaine — « 01, 03, 07 +9 » ne dit rien à personne, là où
- * « Auvergne-Rhône-Alpes » situe immédiatement.
- */
-export interface StaffCoverage {
-  /** Codes départements couverts, triés. Sert la recherche et le rapprochement. */
-  codes: string[];
-  /**
-   * Régions couvertes, sans doublon, **de la plus fournie à la moins fournie**.
-   *
-   * Cet ordre-là et pas l'alphabet, parce que l'affichage est tronqué : Ilan
-   * couvre Centre-Val de Loire (6 départements), Hauts-de-France (5) et
-   * Île-de-France (8). Par ordre alphabétique, la troncature à deux régions
-   * masquerait justement l'Île-de-France — la principale. À nombre égal, on
-   * retombe sur l'alphabet français.
-   */
-  regions: string[];
-}
-
-export type CoverageIndex = ReadonlyMap<string, StaffCoverage>;
+/** Codes départements couverts par un collaborateur, triés. */
+export type CoverageIndex = ReadonlyMap<string, string[]>;
 
 /**
- * Territoire couvert par chaque collaborateur.
+ * Départements couverts par chaque collaborateur.
  *
  * Sert de complément d'information dans les listes de collaborateurs, où le
  * service (« Commercial ») ne dit rien du territoire.
  */
 export function coverageByStaff(territories: Territory[]): CoverageIndex {
   const codesByStaff = new Map<string, Set<string>>();
-  // Compté, et pas seulement collecté : c'est ce nombre qui ordonne les
-  // régions, donc ce que la troncature d'affichage conserve.
-  const regionWeight = new Map<string, Map<string, number>>();
 
   for (const t of territories) {
     if (!t.active) continue;
     const key = sectorKey(t.code);
     if (!key) continue;
-    const region = t.region.trim();
 
     for (const id of t.staffIds) {
       let codes = codesByStaff.get(id);
@@ -150,53 +125,31 @@ export function coverageByStaff(territories: Territory[]): CoverageIndex {
       }
       // `Set` plutôt qu'un `includes` : deux lignes peuvent partager une clé,
       // la Corse par exemple si 2A et 2B y étaient saisis séparément.
-      const isNewCode = !codes.has(key);
       codes.add(key);
-
-      if (!region || !isNewCode) continue;
-      let weights = regionWeight.get(id);
-      if (!weights) {
-        weights = new Map();
-        regionWeight.set(id, weights);
-      }
-      weights.set(region, (weights.get(region) ?? 0) + 1);
     }
   }
 
-  const collator = new Intl.Collator('fr');
-  const byStaff = new Map<string, StaffCoverage>();
-  for (const [id, codes] of codesByStaff) {
-    const weights = regionWeight.get(id) ?? new Map<string, number>();
-    const regions = [...weights.entries()]
-      .sort((a, b) => b[1] - a[1] || collator.compare(a[0], b[0]))
-      .map(([region]) => region);
-    byStaff.set(id, { codes: [...codes].sort(), regions });
-  }
+  const byStaff = new Map<string, string[]>();
+  for (const [id, codes] of codesByStaff) byStaff.set(id, [...codes].sort());
   return byStaff;
 }
 
 /**
- * Résumé du territoire d'un commercial, pour une ligne de liste déroulante.
+ * Territoire d'un collaborateur pour une ligne de liste déroulante : ses codes
+ * départements, **tous**, dans l'ordre.
  *
- * Les **régions** d'abord : c'est l'échelle que l'on reconnaît sans réfléchir.
- * Deux au plus, le reste compté — les commerciaux en couvrent deux ou trois, et
- * une ligne de liste n'a pas la place d'en afficher davantage.
+ * Aucune troncature ici, volontairement. Un commercial en couvre une douzaine,
+ * et « 01, 03, 07 +9 » ne répond pas à la question posée — savoir si la
+ * personne couvre le département de la demande suppose de voir la liste. La
+ * place manque parfois (la barre de sélection multiple est étroite) : c'est
+ * l'affichage qui coupe, avec des points de suspension, plutôt que le
+ * formatage qui décide d'avance ce qui mérite d'être lu.
  *
- * Les codes départements ne servent de repli que si la région manque, ce qui
- * n'arrive que sur une ligne de sectorisation incomplète. Ils restent
- * interrogeables par la recherche, qui lit le champ complet.
+ * Effet de bord utile : les codes étant dans le complément, la recherche de la
+ * liste — qui lit libellé et complément — trouve un commercial en tapant « 47 ».
  */
-export function formatCoverage(coverage: StaffCoverage | undefined): string {
-  const regions = coverage?.regions ?? [];
-  if (regions.length) {
-    if (regions.length <= 2) return regions.join(', ');
-    return `${regions.slice(0, 2).join(', ')} +${regions.length - 2}`;
-  }
-
-  const codes = coverage?.codes ?? [];
-  if (!codes.length) return '';
-  if (codes.length <= 4) return codes.join(', ');
-  return `${codes.slice(0, 3).join(', ')} +${codes.length - 3}`;
+export function formatCoverage(codes: string[] | undefined): string {
+  return (codes ?? []).join(', ');
 }
 
 /** Libellé d'un secteur — « 33 · Gironde », le nom seulement s'il est connu. */
@@ -216,6 +169,8 @@ export interface StaffOption {
   value: string;
   label: string;
   hint?: string;
+  /** Départements couverts, cherchés même quand le complément dit autre chose. */
+  keywords?: string;
   /** Vrai si le collaborateur couvre le département de la demande. */
   pinned?: boolean;
 }
@@ -230,13 +185,23 @@ export function staffOptionsFor(
     const territory = formatCoverage(coverage.get(s.id));
     return {
       value: s.id,
-      label: s.name,
-      // Le territoire remplace le service dans le complément : dans une modale
-      // d'assignation, « Nouvelle-Aquitaine » informe plus que « Commercial ».
+      // Même casse que partout ailleurs dans l'écran : la table RH contient
+      // aussi bien « Thibaut BONNET » que « rania kamal », et une liste où la
+      // moitié des lignes crie se lit mal.
+      label: formatPersonName(s.name),
+      // Le complément dit le territoire, et rien d'autre : dans une modale
+      // d'assignation, « 33, 40, 47 » répond à la question posée, là où
+      // « Directeur » ou « Commercial » ne dit rien du périmètre. Un
+      // collaborateur non sectorisé n'a donc pas de complément — mieux vaut
+      // rien qu'un service qui n'aide pas à choisir.
       // Le commercial du secteur garde sa mention propre — c'est le signal le
       // plus fort de la liste, et il ne doit dépendre d'aucun regroupement,
       // que tous les appelants ne demandent pas.
-      hint: inSector ? `Secteur ${sector?.code}` : territory || s.group,
+      hint: inSector ? `Secteur ${sector?.code}` : territory || undefined,
+      // Ses départements restent cherchables malgré tout : on tape le numéro
+      // du client pour trouver qui le couvre, et « Secteur 33 » aurait exclu
+      // de la recherche un « 47 » que ce commercial couvre pourtant.
+      keywords: territory || undefined,
       pinned: inSector,
     };
   });

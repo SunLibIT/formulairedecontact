@@ -31,6 +31,7 @@ import { useDialog } from '../hooks/useDialog';
 import { createRecord, deleteRecord, updateRecord } from '../lib/airtable';
 import type { StaffMember, Territory } from '../lib/records';
 import { REGIONS, TABLES, TERRITORY } from '../lib/schema';
+import { coverageByStaff, formatCoverage } from '../lib/territories';
 import { formatPersonName } from '../lib/format';
 import { Callout, SearchField, SecondaryButton } from './ui';
 import { SearchableSelect } from './SearchableSelect';
@@ -138,19 +139,36 @@ export function SectorPanel({
   const [overrides, setOverrides] = useState<Record<string, Partial<Territory>>>({});
   const [removed, setRemoved] = useState<Set<string>>(new Set());
 
+  // La table telle qu'elle est à l'écran, éditions locales comprises. Sert la
+  // liste des lignes *et* les départements affichés en face de chaque
+  // commercial : les deux doivent bouger ensemble après une écriture.
+  const merged = useMemo(
+    () =>
+      territories
+        .filter((t) => !removed.has(t.id))
+        .map((t) => ({ ...t, ...overrides[t.id] })),
+    [territories, overrides, removed],
+  );
+
+  const coverage = useMemo(() => coverageByStaff(merged), [merged]);
+
   const staffOptions = useMemo(
     () =>
       staff
         .filter((s) => s.active)
-        .map((s) => ({ value: s.id, label: s.name, hint: s.group })),
-    [staff],
+        // Les départements déjà couverts, et non le service : dans cette
+        // liste-là, « Directeur » ne dit rien, tandis que « 33, 40, 47 »
+        // montre le secteur qu'on est en train d'étendre — et se cherche au
+        // numéro, comme le reste de l'écran.
+        .map((s) => ({
+          value: s.id,
+          label: formatPersonName(s.name),
+          hint: formatCoverage(coverage.get(s.id)) || undefined,
+        })),
+    [staff, coverage],
   );
 
   const rows = useMemo(() => {
-    const merged = territories
-      .filter((t) => !removed.has(t.id))
-      .map((t) => ({ ...t, ...overrides[t.id] }));
-
     const q = query.trim().toLowerCase();
     const filtered = q
       ? merged.filter((t) => {
@@ -163,7 +181,7 @@ export function SectorPanel({
 
     // Tri par code : c'est l'ordre dans lequel on cherche un département.
     return [...filtered].sort((a, b) => a.code.localeCompare(b.code));
-  }, [territories, overrides, removed, query, staff]);
+  }, [merged, query, staff]);
 
   const uncovered = rows.filter((t) => t.staffIds.length === 0).length;
 

@@ -281,8 +281,17 @@ and it does not constrain what gets written.
 - **The three places that list staff share `staffOptionsFor`**: the assign modal, the full
   record and the bulk bar. It marks the sector rep as `pinned`, hints « Secteur 33 » on
   that row and the covered departments on the others — in an assignment list a territory
-  says more than « Commercial ». `SearchableSelect` keeps its alphabetical sort *inside*
-  each group, so pinning splits the list in two instead of reordering it.
+  says more than « Commercial », and a role least of all, so no `group` fallback: a
+  non-sectorised colleague gets no hint at all. Codes are listed in full, never
+  abbreviated to « 01, 03, 07 +9 »: the question being asked is « does this person cover
+  the 63? », and the display truncates if it must. `SearchableSelect` keeps its
+  alphabetical sort *inside* each group, so pinning splits the list in two instead of
+  reordering it.
+- **The list is searched by department number** — that is the actual gesture: read the
+  customer's department, type it, assign whoever covers it. The sector rep's hint reads
+  « Secteur 33 », so typing « 47 » would have excluded them from their own list; their
+  codes therefore travel in `SelectOption.keywords`, searched but not displayed.
+  `SearchableSelect.test.tsx` pins it.
 - The bulk bar only pins when the **whole selection shares one sector**. On a mixed batch
   the pin is dropped: highlighting one department's rep would steer the assignment of rows
   that belong to the others.
