@@ -262,8 +262,10 @@ export function KpiPanel({
               value={summary.qualificationRate}
               label="Taux de qualification"
               tone="qualified"
-              hint={`${summary.qualified} qualifiées sur ${
-                summary.qualified + summary.rejected
+              hint={`${summary.qualified + summary.signed} retenues${
+                summary.signed ? ` dont ${summary.signed} signées` : ''
+              } sur ${
+                summary.qualified + summary.signed + summary.rejected
               } tranchées — les demandes non traitées sont exclues du calcul`}
             />
             <Meter

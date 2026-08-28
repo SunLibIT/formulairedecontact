@@ -51,6 +51,15 @@
   --info-bg: #eff4ff;
   --info-border: #cbdbff;
 
+  /* « Signé » — l'aboutissement du suivi commercial.
+     Ni vert ni teal, qui sont déjà pris : le vert de marque porte « Nouveau »
+     et le teal signale l'élément actif. Le violet est la seule teinte libre
+     qui se distingue des cinq autres statuts sans se confondre avec un état
+     d'interface. Contraste 8,6:1 sur son fond en clair, 7,4:1 en sombre. */
+  --violet: #6d28d9;
+  --violet-bg: #f5f3ff;
+  --violet-border: #ddd6fe;
+
   /* Base */
   --radius: 14px;
   --radius-sm: 10px;
@@ -102,6 +111,11 @@
     --info: #7ba4f5;
     --info-bg: #182541;
     --info-border: #253a66;
+
+    /* Choisi sur le fond sombre, pas éclairci depuis la valeur claire. */
+    --violet: #bda4f7;
+    --violet-bg: #221a3a;
+    --violet-border: #372a5e;
 
     --focus: 0 0 0 3px rgb(53 194 212 / 0.35);
   }

@@ -130,12 +130,15 @@ export function buildKpiExport(
     countRow('Synthèse', `Non traitées depuis plus de ${STALE_DAYS} jours`, summary.staleCount, summary.total),
   );
 
+  rows.push(countRow('Synthèse', 'Signées', summary.signed, summary.total));
+
   // Taux repris tels que définis dans `kpi.ts` : le taux de qualification se
   // calcule sur les demandes tranchées, pas sur le total, sinon il baisse à
-  // chaque nouvelle demande non encore traitée.
+  // chaque nouvelle demande non encore traitée. Les signées comptent parmi les
+  // retenues — elles ont été qualifiées avant d'être signées.
   rows.push([
     'Synthèse',
-    'Taux de qualification (sur demandes tranchées)',
+    'Taux de qualification (qualifiées + signées sur demandes tranchées)',
     '',
     frPercent(summary.qualificationRate),
   ]);

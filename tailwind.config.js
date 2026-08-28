@@ -41,6 +41,11 @@ export default {
           bg: 'var(--info-bg)',
           border: 'var(--info-border)',
         },
+        violet: {
+          DEFAULT: 'var(--violet)',
+          bg: 'var(--violet-bg)',
+          border: 'var(--violet-border)',
+        },
       },
       fontFamily: {
         sans: ['Plus Jakarta Sans', 'system-ui', '-apple-system', 'sans-serif'],

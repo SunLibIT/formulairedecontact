@@ -249,6 +249,23 @@ describe('summarise', () => {
     expect(s.qualificationRate).toBeCloseTo(2 / 3);
   });
 
+  it('range les signées du côté des retenues', () => {
+    // Une demande signée a forcément été qualifiée : elle a avancé d'un cran,
+    // elle n'a pas été refusée. La compter à part ferait baisser le taux de
+    // qualification à chaque signature.
+    const s = summarise(
+      [
+        lead({ id: 'a', status: 'Qualifié' }),
+        lead({ id: 'b', status: 'Signé' }),
+        lead({ id: 'c', status: 'Hors Critères' }),
+      ],
+      now,
+    );
+    expect(s.signed).toBe(1);
+    expect(s.qualified).toBe(1);
+    expect(s.qualificationRate).toBeCloseTo(2 / 3);
+  });
+
   it('isole un statut hors référentiel au lieu de l’absorber', () => {
     const s = summarise(
       [

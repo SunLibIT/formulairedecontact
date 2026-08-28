@@ -180,6 +180,7 @@ export const STATUSES = [
   'Nouveau',
   'A contacter',
   'Qualifié',
+  'Signé',
   'A relancer',
   'Hors Critères',
   'Archivé',
@@ -218,8 +219,15 @@ export const REQUESTER_TYPES = [
  * | `action`    | A contacter                | ambre clair    |
  * | `followup`  | A relancer                 | ambre foncé    |
  * | `qualified` | Qualifié                   | bleu           |
+ * | `signed`    | Signé                      | violet         |
  * | `rejected`  | Hors Critères              | rouge          |
  * | `neutral`   | Archivé, absence de valeur | gris           |
+ *
+ * « Signé » ne reprend ni le vert ni le teal, pourtant les couleurs
+ * évidentes pour une bonne nouvelle : le vert de marque porte déjà
+ * « Nouveau », et le teal est réservé à l'élément actif par la charte. Le
+ * violet est la seule teinte qui se distingue des cinq autres statuts sans
+ * imiter un état d'interface.
  *
  * « A contacter » et « A relancer » partagent la teinte ambre à deux pas
  * différents, et non deux teintes distinctes : le second est une reprise du
@@ -235,12 +243,14 @@ export type Tone =
   | 'action'
   | 'followup'
   | 'qualified'
+  | 'signed'
   | 'rejected';
 
 export const STATUS_TONE: Record<Status, Tone> = {
   Nouveau: 'fresh',
   'A contacter': 'action',
   Qualifié: 'qualified',
+  Signé: 'signed',
   'A relancer': 'followup',
   'Hors Critères': 'rejected',
   Archivé: 'neutral',

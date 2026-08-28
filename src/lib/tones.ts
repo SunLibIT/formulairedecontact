@@ -15,6 +15,7 @@
  * | `action`    | ambre clair  | horloge           |
  * | `followup`  | ambre foncé  | flèche de reprise |
  * | `qualified` | bleu         | coche             |
+ * | `signed`    | violet       | paraphe           |
  * | `rejected`  | rouge        | triangle d'alerte |
  * | `neutral`   | gris         | cercle            |
  */
@@ -23,6 +24,7 @@ import {
   Check,
   Circle,
   Clock,
+  FileSignature,
   RotateCcw,
   Sparkle,
   type LucideIcon,
@@ -36,6 +38,7 @@ export const TONE_CLASS: Record<Tone, string> = {
   action: 'bg-amber-soft-bg text-amber-soft border-amber-soft-border',
   followup: 'bg-amber-bg text-amber border-amber-border',
   qualified: 'bg-info-bg text-info border-info-border',
+  signed: 'bg-violet-bg text-violet border-violet-border',
   rejected: 'bg-danger-bg text-danger border-danger-border',
 };
 
@@ -46,6 +49,7 @@ export const TONE_ACCENT: Record<Tone, string> = {
   action: 'bg-amber-soft-bg text-amber-soft',
   followup: 'bg-amber-bg text-amber',
   qualified: 'bg-info-bg text-info',
+  signed: 'bg-violet-bg text-violet',
   rejected: 'bg-danger-bg text-danger',
 };
 
@@ -63,6 +67,7 @@ export const TONE_FILL: Record<Tone, string> = {
   action: 'var(--amber-soft)',
   followup: 'var(--amber)',
   qualified: 'var(--info)',
+  signed: 'var(--violet)',
   rejected: 'var(--red)',
 };
 
@@ -72,5 +77,6 @@ export const TONE_ICON: Record<Tone, LucideIcon> = {
   action: Clock,
   followup: RotateCcw,
   qualified: Check,
+  signed: FileSignature,
   rejected: AlertTriangle,
 };

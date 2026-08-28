@@ -176,11 +176,19 @@ export interface Summary {
   /** Encore au statut « Nouveau ». */
   untouched: number;
   qualified: number;
+  /** Statut « Signé » : une demande qualifiée qui a abouti. */
+  signed: number;
   rejected: number;
   /**
-   * Part de qualifiées parmi les demandes **tranchées** (qualifiées + hors
-   * critères). Calculer sur le total ferait baisser le taux à chaque nouvelle
-   * demande non encore traitée, ce qui ne mesurerait rien.
+   * Part de retenues parmi les demandes **tranchées** — retenues étant
+   * « Qualifié » **et** « Signé », tranchées y ajoutant « Hors Critères ».
+   *
+   * Calculer sur le total ferait baisser le taux à chaque nouvelle demande non
+   * encore traitée, ce qui ne mesurerait rien. Et compter les signées avec les
+   * qualifiées n'est pas un arrangement : une demande signée a été qualifiée,
+   * elle a seulement avancé d'un cran depuis. Les exclure ferait *baisser* le
+   * taux de qualification à chaque signature — l'indicateur dirait le
+   * contraire de ce qui se passe.
    */
   qualificationRate: number | null;
   /** Part de demandes déjà sorties de « Nouveau ». */
@@ -235,8 +243,12 @@ export function summarise(leads: Lead[], now = Date.now()): Summary {
   }
 
   const qualified = byStatus['Qualifié'];
+  const signed = byStatus['Signé'];
   const rejected = byStatus['Hors Critères'];
-  const decided = qualified + rejected;
+  // Une signature ne sort pas une demande du décompte des retenues : elle la
+  // fait avancer. Sans ce `+ signed`, signer ferait baisser le taux.
+  const kept = qualified + signed;
+  const decided = kept + rejected;
   const untouched = byStatus['Nouveau'];
   // Base du taux de traitement : les demandes dont on sait lire le statut. Un
   // statut inconnu n'est pas « traité », il est illisible — le compter comme
@@ -250,8 +262,9 @@ export function summarise(leads: Lead[], now = Date.now()): Summary {
     unassigned,
     untouched,
     qualified,
+    signed,
     rejected,
-    qualificationRate: decided ? qualified / decided : null,
+    qualificationRate: decided ? kept / decided : null,
     handledRate: readable > 0 ? (readable - untouched) / readable : null,
     medianUntouchedAge: median(untouchedAges),
     staleCount,

@@ -90,6 +90,8 @@ describe('buildKpiExport', () => {
     expect(cell(rows, 'Statut', 'Archivé')?.valeur).toBe('0');
   });
 
+  const RATE_LABEL = 'Taux de qualification (qualifiées + signées sur demandes tranchées)';
+
   it('calcule le taux de qualification sur les demandes tranchées', () => {
     // 2 qualifiées, 1 hors critères, 1 encore nouvelle : 2/3 et non 2/4.
     const leads = [
@@ -99,9 +101,22 @@ describe('buildKpiExport', () => {
       lead({ id: 'd', status: 'Hors Critères' }),
     ];
     const { rows } = buildKpiExport(leads, SCOPE, NOW);
-    expect(cell(rows, 'Synthèse', 'Taux de qualification (sur demandes tranchées)')?.part).toBe(
-      '66,7',
-    );
+    expect(cell(rows, 'Synthèse', RATE_LABEL)?.part).toBe('66,7');
+  });
+
+  it('compte les signées avec les qualifiées, jamais contre elles', () => {
+    // Signer la seconde qualifiée ne change rien au taux : la demande a
+    // avancé, elle n'a pas été refusée. Sans cela, chaque signature ferait
+    // baisser l'indicateur — il dirait l'inverse de ce qui se passe.
+    const leads = [
+      lead({ id: 'a', status: 'Nouveau' }),
+      lead({ id: 'b', status: 'Qualifié' }),
+      lead({ id: 'c', status: 'Signé' }),
+      lead({ id: 'd', status: 'Hors Critères' }),
+    ];
+    const { rows } = buildKpiExport(leads, SCOPE, NOW);
+    expect(cell(rows, 'Synthèse', RATE_LABEL)?.part).toBe('66,7');
+    expect(cell(rows, 'Synthèse', 'Signées')?.valeur).toBe('1');
   });
 
   it('rapporte les répartitions à leur couverture, pas au total', () => {
