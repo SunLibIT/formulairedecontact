@@ -292,6 +292,35 @@ and it does not constrain what gets written.
   « Secteur 33 », so typing « 47 » would have excluded them from their own list; their
   codes therefore travel in `SelectOption.keywords`, searched but not displayed.
   `SearchableSelect.test.tsx` pins it.
+- **Three groups, and the sectorisation orders the list without restricting it.**
+  `staffGroups` returns « Secteur 33 », « Commerciaux (sectorisation) », « Autres
+  collaborateurs »; `SearchableSelect` takes them as `groups` and sorts alphabetically
+  *inside* each. The 8 sectorised reps come first, but the other 27 colleagues stay
+  assignable — an « Abonné SunLib » request goes to service client, and a newly hired rep
+  has no sector yet. Filtering the list down to the sectorisation would make both
+  impossible from the app.
+
+### RH ↔ sectorisation consistency
+
+Assigning a request fires an Airtable automation that emails the rep, and its « À » field
+reads the RH record's address. A record with no address does not fail the assignment — it
+makes the mail vanish, with no error anywhere. That is why `lib/staffAudit.ts` exists: it
+compares the two tables and answers questions neither asks alone. It never writes.
+
+- **`no-email` and `odd-domain` are blocking**, the others are not. Real data on
+  2026-08-28: Jerome K (Commercial) has no address at all, and « claudine@sunlib.frr »
+  carries one r too many — the domain check is what catches the second, since the dominant
+  domain is derived from the records rather than hard-coded (and skipped under 3 addresses,
+  where « dominant » means nothing).
+- **Duplicate records are matched on the name, not the email.** The real case is two
+  records for one person carrying *different* addresses, one of them a typo — comparing
+  emails would have found nothing. Case and accents are folded.
+- Being sectorised is `coverage.get(id)` — the same index that orders the assign list, so
+  the audit and the list cannot disagree about who is a sales rep.
+- Surfaced in two places: « sans email » in the assign list's hint, and an amber Callout in
+  the assign dialog when the person picked has no address (the write still goes through —
+  they may have been told another way). The full report is a collapsed « Contrôle des
+  données » block in the sectorisation screen, the only screen that shows both tables.
 - The bulk bar only pins when the **whole selection shares one sector**. On a mixed batch
   the pin is dropped: highlighting one department's rep would steer the assignment of rows
   that belong to the others.

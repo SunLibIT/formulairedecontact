@@ -7,13 +7,22 @@ import { SearchableSelect } from './SearchableSelect';
  * Le geste que ces tests protègent : lire le département du client, taper ce
  * numéro dans la recherche, assigner la personne qui le couvre.
  */
+const GROUPS = ['Secteur 33', 'Commerciaux (sectorisation)', 'Autres collaborateurs'];
+
 const OPTIONS = [
+  // Non sectorisé : déclaré en premier exprès, pour que le tri par groupe se
+  // voie dans le rendu.
+  { value: 'recAlice', label: 'Alice', group: 'Autres collaborateurs' },
+  { value: 'recIlan', label: 'Ilan B', hint: '18, 28, 75', group: 'Commerciaux (sectorisation)' },
   // Le commercial du secteur : son complément dit « Secteur 33 », mais il
   // couvre aussi le 47.
-  { value: 'recEdouard', label: 'Edouard Da Silva', hint: 'Secteur 33', keywords: '33, 47', pinned: true },
-  { value: 'recIlan', label: 'Ilan B', hint: '18, 28, 75' },
-  // Non sectorisé : plus de service affiché, donc rien à chercher dessus.
-  { value: 'recAlice', label: 'Alice', hint: undefined },
+  {
+    value: 'recEdouard',
+    label: 'Edouard Da Silva',
+    hint: 'Secteur 33',
+    keywords: '33, 47',
+    group: 'Secteur 33',
+  },
 ];
 
 const open = () => {
@@ -25,8 +34,7 @@ const open = () => {
       value=""
       onChange={() => {}}
       options={OPTIONS}
-      pinnedLabel="Secteur 33"
-      restLabel="Autres collaborateurs"
+      groups={GROUPS}
     />,
   );
   fireEvent.click(screen.getByRole('button', { name: /choisir le collaborateur/i }));
@@ -62,5 +70,33 @@ describe('SearchableSelect — recherche au numéro de département', () => {
   it('le dit quand aucun collaborateur ne couvre le numéro tapé', () => {
     fireEvent.change(open(), { target: { value: '97' } });
     expect(screen.getByText('Aucun résultat')).toBeTruthy();
+  });
+});
+
+describe('SearchableSelect — groupes', () => {
+  it('range les options dans l’ordre des groupes, pas dans celui reçu', () => {
+    open();
+    // Alice est déclarée en premier et sort en dernier : c'est le groupe qui
+    // ordonne, l'alphabet ne jouant qu'à l'intérieur de chacun.
+    expect(names()).toEqual([
+      'Edouard Da SilvaSecteur 33',
+      'Ilan B18, 28, 75',
+      'Alice',
+    ]);
+  });
+
+  it('pose un intertitre par groupe présent', () => {
+    open();
+    expect(screen.getByText('Secteur 33', { selector: 'li' })).toBeTruthy();
+    expect(screen.getByText('Commerciaux (sectorisation)')).toBeTruthy();
+    expect(screen.getByText('Autres collaborateurs')).toBeTruthy();
+  });
+
+  it('n’annonce pas un groupe que la recherche a vidé', () => {
+    // Un intertitre « Secteur 33 » sans personne dessous laisserait croire que
+    // le département n'est pas couvert.
+    fireEvent.change(open(), { target: { value: 'alice' } });
+    expect(screen.queryByText('Secteur 33', { selector: 'li' })).toBeNull();
+    expect(screen.getByText('Autres collaborateurs')).toBeTruthy();
   });
 });

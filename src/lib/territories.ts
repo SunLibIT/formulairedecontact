@@ -157,13 +157,39 @@ export function formatSector(sector: Sector): string {
   return sector.name ? `${sector.code} · ${sector.name}` : sector.code;
 }
 
+/** Intertitre des commerciaux présents dans la sectorisation. */
+export const SECTORISED_GROUP = 'Commerciaux (sectorisation)';
+/** Intertitre de tous les autres collaborateurs. */
+export const OTHER_GROUP = 'Autres collaborateurs';
+
+/**
+ * Groupes de la liste d'assignation, dans l'ordre.
+ *
+ * Trois niveaux, parce que trois questions différentes se posent : qui couvre
+ * *cette* demande, qui couvre un secteur en général, et qui n'est pas
+ * commercial. Sans secteur connu — les DOM, une demande sans adresse — le
+ * premier niveau disparaît au lieu d'annoncer une section vide.
+ */
+export function staffGroups(sector: Sector | null): string[] {
+  return sector
+    ? [`Secteur ${sector.code}`, SECTORISED_GROUP, OTHER_GROUP]
+    : [SECTORISED_GROUP, OTHER_GROUP];
+}
+
 /**
  * Options de collaborateurs pour une demande : ceux du secteur d'abord.
  *
+ * **La sectorisation ordonne la liste, elle ne la restreint pas.** Les huit
+ * commerciaux sectorisés viennent en tête, mais les 27 autres collaborateurs
+ * restent assignables : une demande d'abonné part au service client, et un
+ * commercial fraîchement arrivé n'a pas encore de secteur. Filtrer la liste
+ * sur la sectorisation rendrait ces deux cas impossibles depuis l'application,
+ * alors qu'ils sont légitimes.
+ *
  * Le tri alphabétique reste celui de la liste déroulante ; on ne fait ici que
- * marquer l'appartenance au secteur, à charge pour elle de regrouper. Un
- * collaborateur inactif déjà assigné reste dans la liste — c'est la règle
- * appliquée par la fiche complète, on ne la contredit pas.
+ * désigner le groupe de chacun. Un collaborateur inactif déjà assigné reste
+ * dans la liste — c'est la règle appliquée par la fiche complète, on ne la
+ * contredit pas.
  */
 export interface StaffOption {
   value: string;
@@ -171,8 +197,8 @@ export interface StaffOption {
   hint?: string;
   /** Départements couverts, cherchés même quand le complément dit autre chose. */
   keywords?: string;
-  /** Vrai si le collaborateur couvre le département de la demande. */
-  pinned?: boolean;
+  /** Intertitre sous lequel ranger l'option. Voir `staffGroups`. */
+  group: string;
 }
 
 export function staffOptionsFor(
@@ -183,26 +209,36 @@ export function staffOptionsFor(
   return staff.map((s) => {
     const inSector = Boolean(sector?.staffIds.includes(s.id));
     const territory = formatCoverage(coverage.get(s.id));
+    // Le complément dit le territoire, et rien d'autre : dans une modale
+    // d'assignation, « 33, 40, 47 » répond à la question posée, là où
+    // « Directeur » ou « Commercial » ne dit rien du périmètre. Un
+    // collaborateur non sectorisé n'a donc pas de complément — mieux vaut
+    // rien qu'un service qui n'aide pas à choisir.
+    // Le commercial du secteur garde sa mention propre — c'est le signal le
+    // plus fort de la liste, et il ne doit dépendre d'aucun regroupement,
+    // que tous les appelants ne demandent pas.
+    const scope = inSector ? `Secteur ${sector?.code}` : territory;
+    // L'absence d'email se dit ici, à l'endroit où l'on choisit : assigner
+    // déclenche un mail côté Airtable, et sans adresse il ne part pas — en
+    // silence. Voir `lib/staffAudit.ts`.
+    const hint = [scope, s.email.trim() ? '' : 'sans email'].filter(Boolean).join(' · ');
+
     return {
       value: s.id,
       // Même casse que partout ailleurs dans l'écran : la table RH contient
       // aussi bien « Thibaut BONNET » que « rania kamal », et une liste où la
       // moitié des lignes crie se lit mal.
       label: formatPersonName(s.name),
-      // Le complément dit le territoire, et rien d'autre : dans une modale
-      // d'assignation, « 33, 40, 47 » répond à la question posée, là où
-      // « Directeur » ou « Commercial » ne dit rien du périmètre. Un
-      // collaborateur non sectorisé n'a donc pas de complément — mieux vaut
-      // rien qu'un service qui n'aide pas à choisir.
-      // Le commercial du secteur garde sa mention propre — c'est le signal le
-      // plus fort de la liste, et il ne doit dépendre d'aucun regroupement,
-      // que tous les appelants ne demandent pas.
-      hint: inSector ? `Secteur ${sector?.code}` : territory || undefined,
+      hint: hint || undefined,
       // Ses départements restent cherchables malgré tout : on tape le numéro
       // du client pour trouver qui le couvre, et « Secteur 33 » aurait exclu
       // de la recherche un « 47 » que ce commercial couvre pourtant.
       keywords: territory || undefined,
-      pinned: inSector,
+      group: inSector
+        ? `Secteur ${sector?.code}`
+        : (coverage.get(s.id)?.length ?? 0) > 0
+          ? SECTORISED_GROUP
+          : OTHER_GROUP,
     };
   });
 }

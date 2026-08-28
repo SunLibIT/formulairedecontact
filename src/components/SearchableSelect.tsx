@@ -29,13 +29,14 @@ export interface SelectOption {
    */
   keywords?: string;
   /**
-   * Remonte l'option en tête de liste, sous un intertitre.
+   * Groupe d'appartenance, rendu en intertitre.
    *
-   * Le tri alphabétique s'applique à l'intérieur de chaque groupe : épingler ne
-   * réordonne pas la liste, il la coupe en deux. Sert au secteur commercial du
-   * département de la demande.
+   * L'ordre des groupes vient de la propriété `groups` de la liste ; le tri
+   * alphabétique s'applique **à l'intérieur** de chacun. Grouper ne réordonne
+   * donc pas la liste au hasard, il la coupe en tranches prévisibles — le
+   * commercial du secteur, les commerciaux sectorisés, puis les autres.
    */
-  pinned?: boolean;
+  group?: string;
 }
 
 export function SearchableSelect({
@@ -45,8 +46,7 @@ export function SearchableSelect({
   emptyLabel,
   searchPlaceholder,
   ariaLabel,
-  pinnedLabel,
-  restLabel,
+  groups,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -55,10 +55,14 @@ export function SearchableSelect({
   emptyLabel: string;
   searchPlaceholder: string;
   ariaLabel: string;
-  /** Intertitre du groupe épinglé. Les intertitres n'apparaissent qu'avec lui. */
-  pinnedLabel?: string;
-  /** Intertitre du reste de la liste. */
-  restLabel?: string;
+  /**
+   * Groupes de la liste, **dans l'ordre d'affichage**.
+   *
+   * Absent : aucun intertitre, tri alphabétique simple — c'est le cas des
+   * listes de filtres. Le premier groupe est celui que la liste met en avant :
+   * son complément passe en teal, comme le commercial du secteur.
+   */
+  groups?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -76,17 +80,27 @@ export function SearchableSelect({
 
   const collator = useMemo(() => new Intl.Collator('fr', { sensitivity: 'base' }), []);
 
+  /** Rang du groupe d'une option. Hors groupe : à la fin. */
+  const rankOf = (o: SelectOption): number => {
+    const i = o.group ? (groups?.indexOf(o.group) ?? -1) : -1;
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+
   // Tri alphabétique systématique, insensible aux accents et à la casse. Les
-  // options épinglées passent devant sans perdre ce tri à l'intérieur de leur
-  // groupe : l'ordre reste prévisible, seule la coupure change.
+  // groupes passent devant sans perdre ce tri à l'intérieur de chacun :
+  // l'ordre reste prévisible, seules les coupures changent.
   const sorted = useMemo(
     () =>
       [...options].sort(
         (a, b) =>
-          Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) ||
+          // Une option sans valeur — « Retirer l'assignation » — reste en
+          // tête : c'est une commande, pas un membre d'un groupe.
+          Number(Boolean(a.value)) - Number(Boolean(b.value)) ||
+          rankOf(a) - rankOf(b) ||
           collator.compare(a.label, b.label),
       ),
-    [options, collator],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [options, collator, groups],
   );
 
   const filtered = useMemo(() => {
@@ -100,18 +114,21 @@ export function SearchableSelect({
   /** L'option vide figure toujours en tête, et n'est pas filtrable. */
   const rows: SelectOption[] = [{ value: '', label: emptyLabel }, ...filtered];
 
-  // Pas d'intertitre s'il ne reste rien d'épinglé après filtrage : une section
-  // « Secteur » vide laisserait croire que le département n'est pas couvert.
-  const showGroups = Boolean(pinnedLabel) && filtered.some((o) => o.pinned);
+  /** Groupe effectif d'une ligne — nul si la liste n'est pas groupée. */
+  const groupOf = (row?: SelectOption): string | null =>
+    groups && row?.group && groups.includes(row.group) ? row.group : null;
 
-  /** Intertitre à poser au-dessus de la ligne `i`, s'il y en a un. */
+  /**
+   * Intertitre à poser au-dessus de la ligne `i`, s'il y en a un.
+   *
+   * Un groupe vidé par la recherche n'a pas d'intertitre : il n'y a pas de
+   * ligne pour le déclencher. Une section « Secteur » vide laisserait croire
+   * que le département n'est pas couvert.
+   */
   const groupLabel = (i: number): string | null => {
-    if (!showGroups) return null;
-    const row = rows[i];
-    const prev = rows[i - 1];
-    if (row?.pinned && !prev?.pinned) return pinnedLabel ?? null;
-    if (!row?.pinned && prev?.pinned) return restLabel ?? null;
-    return null;
+    const current = groupOf(rows[i]);
+    if (!current) return null;
+    return current === groupOf(rows[i - 1]) ? null : current;
   };
 
   const selected = options.find((o) => o.value === value);
@@ -290,7 +307,11 @@ export function SearchableSelect({
                     {row.hint && (
                       <span
                         className={`ml-auto min-w-0 truncate text-xs ${
-                          row.pinned ? 'font-medium text-teal-ink' : 'text-muted'
+                          // Le premier groupe est celui que la liste met en
+                          // avant : le commercial du secteur de la demande.
+                          groups && row.group === groups[0]
+                            ? 'font-medium text-teal-ink'
+                            : 'text-muted'
                         }`}
                       >
                         {row.hint}

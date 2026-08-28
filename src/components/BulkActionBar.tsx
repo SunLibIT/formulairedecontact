@@ -18,7 +18,12 @@ import {
   type Priority,
   type Status,
 } from '../lib/schema';
-import { staffOptionsFor, type CoverageIndex, type Sector } from '../lib/territories';
+import {
+  staffGroups,
+  staffOptionsFor,
+  type CoverageIndex,
+  type Sector,
+} from '../lib/territories';
 import { SearchableSelect } from './SearchableSelect';
 import { SecondaryButton } from './ui';
 
@@ -135,8 +140,7 @@ export function BulkActionBar({
                 { value: '', label: 'Retirer l’assignation' },
                 ...staffOptionsFor(staff, sector, coverage),
               ]}
-              pinnedLabel={sector ? `Secteur ${sector.code}` : undefined}
-              restLabel="Autres collaborateurs"
+              groups={staffGroups(sector)}
             />
           </div>
 

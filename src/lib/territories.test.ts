@@ -8,7 +8,10 @@ import {
   sectorForLead,
   sectorKey,
   sectorKeyOf,
+  staffGroups,
   staffOptionsFor,
+  OTHER_GROUP,
+  SECTORISED_GROUP,
 } from './territories';
 
 const territory = (over: Partial<Territory> = {}): Territory => ({
@@ -204,28 +207,43 @@ describe('staffOptionsFor', () => {
   const coverage = coverageByStaff(territories);
   const sector = buildSectorIndex(territories).get('33') ?? null;
 
-  it('épingle le commercial du secteur et le signale', () => {
+  it('met le commercial du secteur dans son propre groupe', () => {
     const options = staffOptionsFor(staff, sector, coverage);
     const edouard = options.find((o) => o.value === 'recEdouard');
-    expect(edouard?.pinned).toBe(true);
+    expect(edouard?.group).toBe('Secteur 33');
     expect(edouard?.hint).toBe('Secteur 33');
   });
 
-  it('situe les autres par leurs départements', () => {
+  it('situe les autres sectorisés par leurs départements', () => {
     const ilan = staffOptionsFor(staff, sector, coverage).find((o) => o.value === 'recIlan');
-    expect(ilan?.pinned).toBe(false);
+    expect(ilan?.group).toBe(SECTORISED_GROUP);
     expect(ilan?.hint).toBe('20');
   });
 
   it('ne dit rien du service d’un collaborateur non sectorisé', () => {
     // « Directeur » n'aide pas à choisir à qui confier une demande : pas de
-    // territoire, pas de complément.
+    // territoire, pas de complément. Il reste assignable, dans son groupe.
     const options = staffOptionsFor(
       [staffMember('recAdmin', 'Alice', 'Administratif')],
       sector,
       coverage,
     );
     expect(options[0]?.hint).toBeUndefined();
+    expect(options[0]?.group).toBe(OTHER_GROUP);
+  });
+
+  it('signale une fiche sans adresse, là où l’on choisit', () => {
+    // Assigner déclenche un mail : sans adresse il ne part pas, et rien
+    // d'autre ne le dirait.
+    const muet = { ...staffMember('recMuet', 'Jerome K'), email: '' };
+    const options = staffOptionsFor([muet], sector, coverage);
+    expect(options[0]?.hint).toBe('sans email');
+  });
+
+  it('garde le territoire ET l’alerte quand les deux s’appliquent', () => {
+    const muet = { ...staffMember('recIlan', 'Ilan B'), email: '  ' };
+    const options = staffOptionsFor([muet], sector, coverage);
+    expect(options[0]?.hint).toBe('20 · sans email');
   });
 
   it('garde les départements du commercial du secteur cherchables', () => {
@@ -239,8 +257,13 @@ describe('staffOptionsFor', () => {
     expect(edouard?.keywords).toBe('33, 47');
   });
 
-  it('n’épingle rien sans secteur', () => {
+  it('sans secteur, personne n’est mis en avant', () => {
     const options = staffOptionsFor(staff, null, coverage);
-    expect(options.every((o) => !o.pinned)).toBe(true);
+    expect(options.every((o) => o.group === SECTORISED_GROUP)).toBe(true);
+    expect(staffGroups(null)).toEqual([SECTORISED_GROUP, OTHER_GROUP]);
+  });
+
+  it('annonce trois groupes quand le secteur est connu', () => {
+    expect(staffGroups(sector)).toEqual(['Secteur 33', SECTORISED_GROUP, OTHER_GROUP]);
   });
 });

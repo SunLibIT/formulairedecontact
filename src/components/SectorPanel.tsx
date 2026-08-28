@@ -31,6 +31,7 @@ import { useDialog } from '../hooks/useDialog';
 import { createRecord, deleteRecord, updateRecord } from '../lib/airtable';
 import type { StaffMember, Territory } from '../lib/records';
 import { REGIONS, TABLES, TERRITORY } from '../lib/schema';
+import { auditStaff, type Anomaly } from '../lib/staffAudit';
 import { coverageByStaff, formatCoverage } from '../lib/territories';
 import { formatPersonName } from '../lib/format';
 import { Callout, SearchField, SecondaryButton } from './ui';
@@ -151,6 +152,11 @@ export function SectorPanel({
   );
 
   const coverage = useMemo(() => coverageByStaff(merged), [merged]);
+
+  // Le rapprochement des deux tables. Il vit ici parce que c'est le seul écran
+  // qui les montre ensemble, et parce qu'une anomalie se corrige dans la
+  // foulée — soit dans la ligne, soit dans RH, à côté.
+  const anomalies = useMemo(() => auditStaff(staff, coverage), [staff, coverage]);
 
   const staffOptions = useMemo(
     () =>
@@ -293,6 +299,8 @@ export function SectorPanel({
           <span className="text-amber"> · {uncovered} sans commercial</span>
         )}
       </p>
+
+      <StaffAudit anomalies={anomalies} />
 
       {creating && canWrite && (
         <NewRow
@@ -483,6 +491,65 @@ export function SectorPanel({
         perdre son historique.
       </p>
     </div>
+  );
+}
+
+/* --------------------------------------------------------- contrôle */
+
+/**
+ * Contrôle de cohérence RH ↔ sectorisation.
+ *
+ * Replié par défaut : ce n'est pas ce qu'on vient faire ici, mais c'est le
+ * seul écran où la question se pose. Le compte reste visible fermé — une
+ * anomalie qu'il faut déplier pour découvrir n'est pas signalée.
+ *
+ * Silencieux quand tout va bien, plutôt qu'un « 0 anomalie » qui prendrait la
+ * place d'une ligne utile.
+ */
+function StaffAudit({ anomalies }: { anomalies: Anomaly[] }) {
+  if (!anomalies.length) return null;
+
+  const blocking = anomalies.filter((a) => a.blocking).length;
+
+  return (
+    <details className="rounded-card border border-line bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm">
+        <AlertTriangle
+          className={`h-4 w-4 shrink-0 ${blocking ? 'text-amber' : 'text-muted'}`}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+        <span className="font-semibold text-ink">Contrôle des données</span>
+        <span className="text-muted">
+          {anomalies.length} anomalie{anomalies.length > 1 ? 's' : ''}
+          {/* Ce qui casse le mail est compté à part : c'est la seule chose
+              qui appelle une correction tout de suite. */}
+          {blocking > 0 && ` · ${blocking} bloque${blocking > 1 ? 'nt' : ''} l'envoi du mail`}
+        </span>
+      </summary>
+
+      <ul className="space-y-1.5 border-t border-line px-4 py-3 text-sm">
+        {anomalies.map((a) => (
+          <li key={`${a.kind}-${a.staffIds.join('-')}`} className="flex items-start gap-2">
+            <span
+              aria-hidden="true"
+              className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                a.blocking ? 'bg-amber' : 'bg-muted'
+              }`}
+            />
+            <span className="min-w-0">
+              <span className="font-semibold text-ink">{formatPersonName(a.who)}</span>
+              <span className="text-muted"> — {a.detail}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <p className="border-t border-line px-4 py-2 text-xs text-muted">
+        Ces fiches se corrigent dans la table RH d'Airtable ; l'application ne
+        les modifie jamais.
+      </p>
+    </details>
   );
 }
 

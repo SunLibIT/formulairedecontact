@@ -54,6 +54,7 @@ import {
 } from '../lib/schema';
 import {
   sectorForLead,
+  staffGroups,
   staffOptionsFor,
   type CoverageIndex,
   type SectorIndex,
@@ -393,8 +394,7 @@ export function LeadModal({
                     value={assigneeId}
                     onChange={setAssigneeId}
                     options={assigneeOptions}
-                    pinnedLabel={sector ? `Secteur ${sector.code}` : undefined}
-                    restLabel="Autres collaborateurs"
+                    groups={staffGroups(sector)}
                   />
                 </Label>
               </div>
