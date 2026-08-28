@@ -61,14 +61,26 @@ export interface DuplicateNote {
   /** Vrai pour la demande la plus récente de l'adresse. */
   latest: boolean;
   title: string;
+  /**
+   * Libellé accessible du geste d'archivage.
+   *
+   * Il dit **laquelle** on archive, parce que la pastille, elle, ne le dit
+   * qu'en couleur : archiver la plus récente reste possible — c'est parfois
+   * elle le doublon — mais ne doit pas se faire sans l'avoir lu.
+   */
+  archiveLabel: string;
 }
 
 export function duplicateNote(mark: DuplicateMark): DuplicateNote {
   const total = `${mark.count} demandes de ${mark.email}`;
+  const latest = mark.rank === 1;
   return {
     label: `${mark.count} demandes`,
-    latest: mark.rank === 1,
-    title: mark.rank === 1 ? `La plus récente des ${total}` : `Une des ${total}`,
+    latest,
+    title: latest ? `La plus récente des ${total}` : `Une des ${total}`,
+    archiveLabel: latest
+      ? `Archiver cette demande — la plus récente des ${total}`
+      : `Archiver cette demande — une des ${total}`,
   };
 }
 

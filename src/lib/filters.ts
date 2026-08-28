@@ -179,6 +179,14 @@ export function applyFilters(leads: Lead[], f: FilterState): Lead[] {
   const periodScoped = applyPeriod(leads, f.from, f.to);
 
   return periodScoped.filter((lead) => {
+    // Une demande archivée est sortie du flux de travail : elle n'est plus à
+    // traiter, elle est le résultat d'un traitement — un doublon résolu, une
+    // demande absorbée par une fusion. Elle ne s'affiche donc que si on la
+    // demande, par le filtre de statut, qui reste le chemin vers l'archive.
+    // Rien n'est supprimé en base : c'est bien un masquage, réversible en
+    // rendant son statut à la ligne.
+    if (lead.status === 'Archivé' && f.status !== 'Archivé') return false;
+
     if (query && !matchesSearch(lead, query)) return false;
     if (f.status !== ALL && lead.status !== f.status) return false;
     if (f.priority !== ALL && lead.priority !== f.priority) return false;
@@ -206,19 +214,31 @@ export interface Stats {
   unassigned: number;
 }
 
-/** Compteurs sur l'ensemble restreint à la période. */
+/**
+ * Compteurs sur l'ensemble restreint à la période.
+ *
+ * Les demandes **archivées** comptent dans `byStatus.Archivé` et nulle part
+ * ailleurs : pas dans le total, pas dans les priorités, pas dans les non
+ * assignées. Sans cela, « Toutes (440) » annoncerait un nombre que la liste,
+ * qui les masque, ne montrerait jamais. Le compteur d'« Archivé » survit,
+ * lui, parce que c'est par lui qu'on retourne les voir.
+ */
 export function computeStats(leads: Lead[]): Stats {
   const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
   const byPriority = Object.fromEntries(PRIORITIES.map((p) => [p, 0])) as Record<Priority, number>;
   let unassigned = 0;
+  let total = 0;
 
   for (const lead of leads) {
     if (lead.status in byStatus) byStatus[lead.status]++;
+    if (lead.status === 'Archivé') continue;
+
+    total++;
     if (lead.priority in byPriority) byPriority[lead.priority]++;
     if (!lead.assigneeIds.length && !lead.assigneeNames.length) unassigned++;
   }
 
-  return { total: leads.length, byStatus, byPriority, unassigned };
+  return { total, byStatus, byPriority, unassigned };
 }
 
 /**

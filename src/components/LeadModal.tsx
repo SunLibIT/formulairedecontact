@@ -21,8 +21,10 @@
  */
 import {
   AlertTriangle,
+  Archive,
   Briefcase,
   Building2,
+  Copy,
   Euro,
   Mail,
   MapPin,
@@ -38,6 +40,8 @@ import {
 import { useId, useMemo, useState } from 'react';
 import { useDialog } from '../hooks/useDialog';
 import { updateRecord } from '../lib/airtable';
+import type { DuplicateMark } from '../lib/duplicates';
+import { duplicateNote } from '../lib/leadActions';
 import { formatAddress, type Lead, type StaffMember } from '../lib/records';
 import {
   PRIORITIES,
@@ -66,12 +70,25 @@ interface Props {
   sectors: SectorIndex;
   /** Départements couverts par collaborateur. */
   coverage: CoverageIndex;
+  /** Renseigné quand l'adresse de la demande en porte plusieurs. */
+  duplicate?: DuplicateMark;
+  /** Archive cette demande répétée. Absent : pas de bouton d'archivage. */
+  onArchiveDuplicate?: (lead: Lead) => Promise<void>;
   onClose: () => void;
   /** Applique le changement dans la liste sans rechargement complet. */
   onSaved: (patch: Partial<Lead>) => void;
 }
 
-export function LeadModal({ lead, staff, sectors, coverage, onClose, onSaved }: Props) {
+export function LeadModal({
+  lead,
+  staff,
+  sectors,
+  coverage,
+  duplicate,
+  onArchiveDuplicate,
+  onClose,
+  onSaved,
+}: Props) {
   const [status, setStatus] = useState<Status>(lead.status);
   const [priority, setPriority] = useState<Priority>(lead.priority);
   const [partner, setPartner] = useState(lead.partner);
@@ -79,6 +96,9 @@ export function LeadModal({ lead, staff, sectors, coverage, onClose, onSaved }: 
   const [notes, setNotes] = useState(lead.notes);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  /** Archivage : deux temps, comme partout ailleurs sur un geste irréversible à l'œil. */
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const titleId = useId();
   // Piège de focus, Échap, verrou de défilement et restitution du focus :
@@ -191,6 +211,79 @@ export function LeadModal({ lead, staff, sectors, coverage, onClose, onSaved }: 
 
         {/* ---- corps défilant ---- */}
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          {/* Doublon : en tête du corps, avant les coordonnées. C'est la
+              première chose à trancher — le reste de la fiche ne veut rien
+              dire tant qu'on ne sait pas si cette demande-là est celle qui
+              compte. Le bouton n'apparaît que sur une demande effectivement
+              répétée : l'index l'a marquée, donc l'écriture est légitime. */}
+          {duplicate && onArchiveDuplicate && (
+            <section className="space-y-2.5 rounded-card border border-line bg-canvas p-3">
+              <p className="flex items-start gap-2 text-sm">
+                <Copy
+                  className="mt-0.5 h-4 w-4 shrink-0 text-muted"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0">
+                  <span className="font-semibold text-ink">Demande répétée</span>
+                  <span className="text-muted">
+                    {' — '}
+                    {duplicateNote(duplicate).title}.
+                  </span>{' '}
+                  <span className="text-muted">
+                    L'archiver la retire des listes sans rien supprimer : son
+                    statut passe à « Archivé » et tout reste consultable dans
+                    Airtable.
+                  </span>
+                </span>
+              </p>
+
+              {confirmingArchive ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-ink">
+                    Archiver cette demande&nbsp;?
+                  </span>
+                  <SecondaryButton
+                    icon={Archive}
+                    busy={archiving}
+                    onClick={() => {
+                      setArchiving(true);
+                      setError('');
+                      void (async () => {
+                        try {
+                          await onArchiveDuplicate(lead);
+                          // La demande quitte la liste : la fiche n'a plus de
+                          // raison de rester ouverte par-dessus.
+                          onClose();
+                        } catch (e) {
+                          setError(
+                            e instanceof Error
+                              ? e.message
+                              : "L'archivage n'a pas pu être enregistré. Réessayez.",
+                          );
+                          setArchiving(false);
+                          setConfirmingArchive(false);
+                        }
+                      })();
+                    }}
+                  >
+                    Confirmer
+                  </SecondaryButton>
+                  <SecondaryButton
+                    onClick={() => setConfirmingArchive(false)}
+                    disabled={archiving}
+                  >
+                    Annuler
+                  </SecondaryButton>
+                </div>
+              ) : (
+                <SecondaryButton icon={Archive} onClick={() => setConfirmingArchive(true)}>
+                  Archiver ce doublon
+                </SecondaryButton>
+              )}
+            </section>
+          )}
+
           <section className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
             <Field icon={Mail} label="Email">
               {lead.email ? (

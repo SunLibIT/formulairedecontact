@@ -102,6 +102,7 @@ export function LeadList({
   thresholds = DEFAULT_AGE_THRESHOLDS,
   selection,
   duplicates,
+  onArchiveDuplicate,
 }: {
   leads: Lead[];
   sort: SortState;
@@ -113,6 +114,8 @@ export function LeadList({
   selection?: Selection;
   /** Index des demandes répétées, calculé sur la table entière. */
   duplicates?: DuplicateIndex;
+  /** Archive une demande répétée. Rend la pastille de doublon cliquable. */
+  onArchiveDuplicate?: (lead: Lead) => Promise<void>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -241,6 +244,7 @@ export function LeadList({
                   thresholds={thresholds}
                   selection={selection}
                   duplicate={duplicates?.marks.get(lead.id)}
+                  onArchiveDuplicate={onArchiveDuplicate}
                 />
               </div>
             );
@@ -258,6 +262,7 @@ function Row({
   thresholds,
   selection,
   duplicate,
+  onArchiveDuplicate,
 }: {
   lead: Lead;
   onOpen: (lead: Lead) => void;
@@ -265,6 +270,7 @@ function Row({
   thresholds: AgeThresholds;
   selection?: Selection;
   duplicate?: DuplicateMark;
+  onArchiveDuplicate?: (lead: Lead) => Promise<void>;
 }) {
 
   const days = ageInDays(lead.date);
@@ -347,7 +353,14 @@ function Row({
               {lead.email}
             </a>
             {/* Contre l'adresse : c'est elle qui rassemble le groupe. */}
-            {duplicate && <DuplicateBadge note={duplicateNote(duplicate)} />}
+            {duplicate && (
+              <DuplicateBadge
+                note={duplicateNote(duplicate)}
+                onArchive={
+                  onArchiveDuplicate ? () => onArchiveDuplicate(lead) : undefined
+                }
+              />
+            )}
           </span>
         )}
         {lead.phone && (

@@ -56,6 +56,7 @@ export function LeadCard({
   onAssign,
   thresholds = DEFAULT_AGE_THRESHOLDS,
   duplicate,
+  onArchiveDuplicate,
 }: {
   lead: Lead;
   onOpen: () => void;
@@ -64,6 +65,8 @@ export function LeadCard({
   thresholds?: AgeThresholds;
   /** Renseigné quand l'adresse porte plusieurs demandes. */
   duplicate?: DuplicateMark;
+  /** Archive cette demande répétée. Rend la pastille cliquable. */
+  onArchiveDuplicate?: (lead: Lead) => Promise<void>;
 }) {
 
   const days = ageInDays(lead.date);
@@ -174,7 +177,14 @@ export function LeadCard({
                   {lead.email}
                 </a>
                 {/* Contre l'adresse : c'est elle qui rassemble le groupe. */}
-                {duplicate && <DuplicateBadge note={duplicateNote(duplicate)} />}
+                {duplicate && (
+                  <DuplicateBadge
+                    note={duplicateNote(duplicate)}
+                    onArchive={
+                      onArchiveDuplicate ? () => onArchiveDuplicate(lead) : undefined
+                    }
+                  />
+                )}
               </span>
             )}
             {lead.phone && (

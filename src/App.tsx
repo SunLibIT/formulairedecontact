@@ -288,6 +288,31 @@ export default function App() {
     [contact, solar, selection],
   );
 
+  /**
+   * Archive une demande répétée, depuis la pastille ou depuis la fiche.
+   *
+   * Le geste que la fusion ne couvrait pas : on a deux demandes de la même
+   * personne, on n'a rien à reprendre de l'ancienne, on veut juste qu'elle
+   * cesse d'occuper la file. Une seule écriture, le statut — donc rien de
+   * commun avec `applyMerge`, qui complète une cible avant d'archiver ses
+   * sources ; les deux se rejoignent seulement sur le fait qu'archiver, ici,
+   * c'est écrire « Archivé » et jamais supprimer.
+   *
+   * L'erreur remonte à l'appelant, qui l'affiche là où l'utilisateur a cliqué.
+   */
+  const archiveDuplicate = useCallback(
+    async (lead: Lead) => {
+      const target = WRITE_TARGET[lead.source];
+      await updateRecord(target.tableId, lead.id, { [target.status]: 'Archivé' });
+      // Correction locale : la ligne quitte la liste — `applyFilters` masque
+      // les archivées — et sort de l'index des doublons, donc le compteur du
+      // filtre baisse dans le même rendu.
+      const source = lead.source === 'contact' ? contact : solar;
+      source.patchLocal(lead.id, { status: 'Archivé' });
+    },
+    [contact, solar],
+  );
+
   /** Bascule un statut depuis une tuile : re-cliquer désélectionne. */
   const toggleStatus = (status: Status) =>
     patchFilters({ status: current.status === status ? ALL : status });
@@ -604,6 +629,7 @@ export default function App() {
                 onAssign={setAssigning}
                 selection={selection}
                 duplicates={duplicates}
+                onArchiveDuplicate={archiveDuplicate}
               />
             ) : (
               <>
@@ -615,6 +641,7 @@ export default function App() {
                       onOpen={() => setSelected(lead)}
                       onAssign={setAssigning}
                       duplicate={duplicates.marks.get(lead.id)}
+                      onArchiveDuplicate={archiveDuplicate}
                     />
                   ))}
                 </div>
@@ -689,6 +716,8 @@ export default function App() {
           staff={staff}
           sectors={sectors}
           coverage={coverage}
+          duplicate={duplicates.marks.get(selected.id)}
+          onArchiveDuplicate={archiveDuplicate}
           onClose={() => setSelected(null)}
           onSaved={onSaved}
         />

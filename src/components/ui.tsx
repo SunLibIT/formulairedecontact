@@ -14,6 +14,7 @@
 import {
   AlertTriangle,
   ArrowRight,
+  Check,
   Copy,
   Loader2,
   RefreshCw,
@@ -97,18 +98,116 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
  * récente passe en teal, la couleur que la charte réserve à l'élément actif :
  * c'est celle qu'on garde en général, et la voir d'un coup d'œil est tout
  * l'intérêt du regroupement.
+ *
+ * Avec `onArchive`, elle devient le geste qui résout le doublon : un clic
+ * demande confirmation **sur place**, un second archive. La confirmation n'est
+ * pas une politesse — la pastille vit dans une carte et dans une ligne, toutes
+ * deux cliquables, et un archivage parti d'un clic mal placé ne se voit pas
+ * puisque la ligne disparaît de la liste.
  */
-export function DuplicateBadge({ note }: { note: DuplicateNote }) {
+export function DuplicateBadge({
+  note,
+  onArchive,
+}: {
+  note: DuplicateNote;
+  /** Archive cette demande. Absent : la pastille reste une simple mention. */
+  onArchive?: () => Promise<void> | void;
+}) {
+  const [phase, setPhase] = useState<'idle' | 'confirm' | 'busy'>('idle');
+  const [failure, setFailure] = useState('');
+
+  const shape = 'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold';
+  const tone = note.latest ? 'bg-teal-soft text-teal-ink' : 'border border-line text-muted';
+
+  // La pastille vit dans une carte et dans une ligne cliquables : sans cet
+  // arrêt, chaque clic ouvrirait la fiche par-dessus la confirmation.
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+
+  if (!onArchive) {
+    return (
+      <span title={note.title} className={`${shape} ${tone}`}>
+        <Copy className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+        {note.label}
+      </span>
+    );
+  }
+
+  if (phase !== 'idle') {
+    const busy = phase === 'busy';
+    return (
+      <span
+        role="group"
+        aria-label={note.archiveLabel}
+        onClick={stop}
+        className={`${shape} ${tone}`}
+      >
+        {busy ? (
+          <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} aria-hidden="true" />
+        ) : (
+          <Copy className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+        )}
+        Archiver&nbsp;?
+        <button
+          type="button"
+          disabled={busy}
+          aria-label={note.archiveLabel}
+          className="rounded p-0.5 hover:bg-surface disabled:opacity-50"
+          onClick={(e) => {
+            stop(e);
+            setPhase('busy');
+            void (async () => {
+              try {
+                await onArchive();
+                // Pas de retour à « idle » : la demande archivée quitte la
+                // liste, ce composant est démonté dans la foulée.
+              } catch (err) {
+                setFailure(
+                  err instanceof Error ? err.message : "L'archivage a échoué.",
+                );
+                setPhase('idle');
+              }
+            })();
+          }}
+        >
+          <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          aria-label="Annuler l'archivage"
+          className="rounded p-0.5 hover:bg-surface disabled:opacity-50"
+          onClick={(e) => {
+            stop(e);
+            setPhase('idle');
+          }}
+        >
+          <X className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+        </button>
+      </span>
+    );
+  }
+
   return (
-    <span
-      title={note.title}
-      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${
-        note.latest ? 'bg-teal-soft text-teal-ink' : 'border border-line text-muted'
+    <button
+      type="button"
+      title={failure || note.title}
+      aria-label={failure ? `${failure} ${note.archiveLabel}` : note.archiveLabel}
+      onClick={(e) => {
+        stop(e);
+        setFailure('');
+        setPhase('confirm');
+      }}
+      className={`${shape} transition-colors ${
+        failure ? TONE_CLASS.rejected : `${tone} hover:bg-canvas`
       }`}
     >
-      <Copy className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-      {note.label}
-    </span>
+      {failure ? (
+        <AlertTriangle className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+      ) : (
+        <Copy className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+      )}
+      {failure ? 'Échec' : note.label}
+    </button>
   );
 }
 

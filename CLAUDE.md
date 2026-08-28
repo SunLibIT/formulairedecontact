@@ -353,6 +353,33 @@ and never writes — that is the whole point.
   feature is the archiving, not the field transfer. The modal says so rather than
   implying a transfer that will not happen.
 
+### Archiving one duplicate
+
+Merging is the heavy answer to a repeat request. The light one — most groups need nothing
+transferred — is to archive the surplus row where you see it. `archiveDuplicate` in
+`App.tsx` writes one field, `Statut` → « Archivé », and patches the row locally. No
+`DELETE`, same as everywhere else.
+
+- **The button exists only on a row the index has marked.** `duplicates.marks.get(id)`
+  gates the badge, the record's block and the write path alike, so nothing offers to
+  archive a request that is not a repeat.
+- **Two clicks, always.** `DuplicateBadge` turns into « Archiver ? ✓ ✗ » in place; the
+  record dialog asks the same question with a Confirmer / Annuler pair. The badge lives
+  inside a clickable card and a clickable row, so it stops propagation on every click —
+  without that, confirming would open the record over the confirmation. And an archive
+  fired by a stray click is invisible: the row leaves the list immediately.
+- **Archiving the most recent request is allowed.** Sometimes it is the junk one. The
+  badge only says so in colour, so `duplicateNote` carries an `archiveLabel` that names
+  which one the button is about — that is what a screen reader announces.
+- **`applyFilters` hides « Archivé » unless the status filter asks for it.** That is what
+  makes archiving feel like archiving; the status dropdown is the way back, which is why
+  `computeStats` keeps counting archived rows in `byStatus` while excluding them from
+  `total`, `byPriority` and `unassigned` — otherwise « Toutes (440) » would promise rows
+  the list never shows.
+- `lib/kpi.ts` still counts archived requests: the KPI tab measures what came in, not
+  what is left to handle. Screen and dashboard therefore differ by the archived count —
+  deliberate, and worth revisiting if the archive ever grows large.
+
 ### Colour and icons
 
 The colour code is declared once in `STATUS_TONE` (`schema.ts`) and rendered by

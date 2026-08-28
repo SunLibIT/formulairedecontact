@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { applyFilters, applyPeriod, DEFAULT_SORT, EMPTY_FILTERS, sortLeads } from './filters';
+import {
+  applyFilters,
+  applyPeriod,
+  computeStats,
+  DEFAULT_SORT,
+  EMPTY_FILTERS,
+  sortLeads,
+} from './filters';
 import type { Lead } from './records';
 
 /** Fabrique un lead minimal, seuls les champs testés sont renseignés. */
@@ -137,6 +144,42 @@ describe('applyFilters', () => {
     ];
     const found = applyFilters(leads, { ...EMPTY_FILTERS, assignee: 'unassigned' });
     expect(found.map((l) => l.id)).toEqual(['vide']);
+  });
+
+  it('masque les demandes archivées', () => {
+    // C'est ce qui donne son effet à l'archivage d'un doublon : la ligne
+    // disparaît de la file sans être supprimée en base.
+    const leads = [lead({ id: 'vivante' }), lead({ id: 'rangée', status: 'Archivé' })];
+    expect(applyFilters(leads, EMPTY_FILTERS).map((l) => l.id)).toEqual(['vivante']);
+  });
+
+  it('les montre quand on les demande par le statut', () => {
+    // Sans ce chemin, une demande archivée par erreur serait irrécupérable
+    // depuis l'interface.
+    const leads = [lead({ id: 'vivante' }), lead({ id: 'rangée', status: 'Archivé' })];
+    const found = applyFilters(leads, { ...EMPTY_FILTERS, status: 'Archivé' });
+    expect(found.map((l) => l.id)).toEqual(['rangée']);
+  });
+});
+
+describe('computeStats', () => {
+  it('sort les archivées du total, des priorités et des non assignées', () => {
+    // Sinon « Toutes (3) » annoncerait un compte que la liste, qui les masque,
+    // ne montrerait jamais.
+    const stats = computeStats([
+      lead({ id: 'a' }),
+      lead({ id: 'b', assigneeIds: ['r1'] }),
+      lead({ id: 'c', status: 'Archivé' }),
+    ]);
+    expect(stats.total).toBe(2);
+    expect(stats.unassigned).toBe(1);
+    expect(stats.byPriority.Moyenne).toBe(2);
+  });
+
+  it('garde leur compteur de statut, seul chemin de retour vers elles', () => {
+    const stats = computeStats([lead({ id: 'c', status: 'Archivé' })]);
+    expect(stats.byStatus['Archivé']).toBe(1);
+    expect(stats.total).toBe(0);
   });
 });
 
