@@ -36,6 +36,8 @@ const SHORT_LABELS: Record<string, string> = {
   "avoir plus d'informations sur l'abonnement sunlib": 'Abonnement',
   "obtenir un devis d'abonnement solaire": 'Devis',
   'etre contacte(e) par sunlib pour d\'autres motifs': 'Autre motif',
+  'etre contacte par un partenaire agree sunlib pour etudier mon projet solaire':
+    'Mise en relation partenaire',
   // Intitulés d'anciennes versions du formulaire, conservés pour que les
   // demandes historiques s'affichent aussi court.
   "demande de devis d'abonnement": 'Devis',

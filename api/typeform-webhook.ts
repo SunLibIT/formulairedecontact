@@ -5,7 +5,7 @@
  * rappatriait et comparait les 438 réponses à chaque clic) par une réception
  * en temps réel : Typeform pousse chaque soumission, on écrit une ligne.
  *
- * À configurer côté Typeform, pour chacun des deux formulaires :
+ * À configurer côté Typeform, pour chaque formulaire de `TYPEFORM_FORMS` :
  *   Connect → Webhooks → Add a webhook
  *   Endpoint : https://<domaine>/api/typeform-webhook
  *   Secret   : la même valeur que la variable TYPEFORM_SECRET sur Vercel
@@ -56,10 +56,15 @@ interface WebhookPayload {
   };
 }
 
-/** Libellé de l'option « Form ID » dans Airtable, pour les deux formulaires. */
+/**
+ * Libellé de l'option « Form ID » dans Airtable, par formulaire. L'option doit
+ * exister dans Airtable avant d'être ajoutée ici : sans `typecast`, un libellé
+ * inconnu fait échouer l'écriture de la demande entière.
+ */
 const FORM_LABEL: Record<string, string> = {
   [TYPEFORM_FORMS.V0]: 'MtEfRiYk (V0)',
   [TYPEFORM_FORMS.MAR26]: 'gbPj3B1m (MAR26)',
+  [TYPEFORM_FORMS.SEP26]: 'EIgYmzF7 (SEP26)',
 };
 
 const json = (body: unknown, status: number) =>
@@ -223,8 +228,8 @@ export async function POST(req: Request): Promise<Response> {
     if (value) fields[field] = value;
   }
 
-  // Garde-fou : les refs de `FIELD_REFS` désignent des questions de deux
-  // formulaires précis. Branché sur un autre formulaire, le mapping ne
+  // Garde-fou : les refs de `FIELD_REFS` désignent des questions des
+  // formulaires de `TYPEFORM_FORMS`. Branché sur un autre formulaire, le mapping ne
   // résoudrait rien et créerait des lignes vides sans erreur. On compte donc
   // ce qui a réellement été résolu et on le journalise.
   //

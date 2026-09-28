@@ -1,7 +1,7 @@
 /**
  * Correspondance entre les questions Typeform et les champs Airtable.
  *
- * Ces UUID sont **irremplaçables** : ils relient chaque question des deux
+ * Ces UUID sont **irremplaçables** : ils relient chaque question des
  * formulaires à un champ métier. Ils étaient enfermés dans une Edge Function
  * Supabase (`sync-typeform-unified`), sur une base aujourd'hui supprimée ;
  * ils sont ici pour être réutilisés par le webhook.
@@ -20,8 +20,13 @@
 export const TYPEFORM_FORMS = {
   /** Ancien formulaire, données historiques. */
   V0: 'MtEfRiYk',
-  /** Formulaire de production. */
+  /** Formulaire de production jusqu'en septembre 2026. */
   MAR26: 'gbPj3B1m',
+  /**
+   * « SunLib Contact Form Sep26 », copie de MAR26 : il en reprend les refs,
+   * plus une troisième question « Je souhaite ».
+   */
+  SEP26: 'EIgYmzF7',
 } as const;
 
 export type FormId = (typeof TYPEFORM_FORMS)[keyof typeof TYPEFORM_FORMS];
@@ -82,6 +87,7 @@ export const FIELD_REFS = {
   motive: [
     '480b9fd7-ce9f-423e-adf6-c5df7d91c71a', // Mar26 Installateur/Collectivité
     'c4b5cd43-5274-4195-83cc-d1a004b347c9', // Mar26 Particulier/Entreprise
+    '66cd29f2-6851-4378-b2e4-be675d550f92', // Sep26, mise en relation partenaire
   ],
   message: [
     '1149f77c-068b-4471-9aa8-6cb1fc994685',
