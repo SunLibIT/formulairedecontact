@@ -66,7 +66,7 @@ import { buildDuplicateIndex, groupByAddress, keepDuplicates } from './lib/dupli
 import { mergeFields, planMerge, type MergePlan } from './lib/merge';
 import type { Lead } from './lib/records';
 import { STATUS_TONE, type Status } from './lib/schema';
-import { sectorKeyOf } from './lib/territories';
+import { sectorForLead, type Sector } from './lib/territories';
 import { WRITE_TARGET } from './lib/writeTargets';
 
 /** Nombre de cartes rendues d'un coup — le reste à la demande. */
@@ -229,20 +229,24 @@ export default function App() {
   /**
    * Secteur commun à la sélection, pour l'assignation groupée.
    *
-   * `null` dès que deux départements se mêlent : le cas utile est celui d'un
-   * lot filtré sur un département, où mettre son commercial en tête épargne
-   * une recherche. Sur un lot hétérogène, mettre en avant l'un des secteurs
-   * orienterait l'assignation des demandes qui relèvent des autres.
+   * `null` dès que deux secteurs se mêlent : le cas utile est celui d'un lot
+   * filtré sur un département, où mettre son commercial en tête épargne une
+   * recherche. Sur un lot hétérogène, mettre en avant l'un des secteurs
+   * orienterait l'assignation des demandes qui relèvent des autres. On compare
+   * le secteur *résolu*, pas le département : dans un 69 découpé par code
+   * postal, deux demandes du même département peuvent relever de deux
+   * commerciaux.
    */
   const bulkSector = useMemo(() => {
     if (!selection.count) return null;
-    const keys = new Set<string>();
+    let common: Sector | null | undefined;
     for (const lead of sorted) {
-      if (selection.ids.has(lead.id)) keys.add(sectorKeyOf(lead));
-      if (keys.size > 1) return null;
+      if (!selection.ids.has(lead.id)) continue;
+      const sector = sectorForLead(lead, sectors);
+      if (common === undefined) common = sector;
+      else if (common?.code !== sector?.code) return null;
     }
-    const [key] = [...keys];
-    return key ? sectors.get(key) ?? null : null;
+    return common ?? null;
   }, [selection.count, selection.ids, sorted, sectors]);
 
   /**

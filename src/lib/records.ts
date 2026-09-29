@@ -21,10 +21,14 @@ export interface StaffMember {
   active: boolean;
 }
 
-/** Un département de la sectorisation commerciale et le commercial qui le couvre. */
+/** Un secteur — département ou code postal — et le commercial qui le couvre. */
 export interface Territory {
   id: string;
-  /** Code sur deux caractères, zéro initial compris — « 01 », « 20 » pour la Corse. */
+  /**
+   * Code de département sur deux caractères, zéro initial compris — « 01 »,
+   * « 20 » pour la Corse — ou code postal sur cinq chiffres, qui prime sur son
+   * département. Voir `lib/territories.ts`.
+   */
   code: string;
   name: string;
   region: string;
@@ -142,13 +146,14 @@ export function toStaffMember(record: AirtableRecord): StaffMember {
  *
  * Le code est relu par `str` puis retaillé : la colonne est un texte, mais un
  * import ou une automatisation peut y laisser « 1 » là où la table dit « 01 ».
- * On restitue le zéro plutôt que de rater le rapprochement en silence.
+ * On restitue le zéro plutôt que de rater le rapprochement en silence — de
+ * même pour un code postal réduit à quatre chiffres (« 1000 » pour 01000).
  */
 export function toTerritory(record: AirtableRecord): Territory {
   const raw = str(record.fields[TERRITORY.code]).trim();
   return {
     id: record.id,
-    code: raw.length === 1 ? `0${raw}` : raw,
+    code: raw.length === 1 || /^\d{4}$/.test(raw) ? `0${raw}` : raw,
     name: str(record.fields[TERRITORY.name]),
     region: str(record.fields[TERRITORY.region]),
     staffIds: ids(record.fields[TERRITORY.salesRep]),

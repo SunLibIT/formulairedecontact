@@ -269,7 +269,16 @@ and it does not constrain what gets written.
   « 20 », not 2A/2B, to match the `Département` field on contact requests, which is only
   the first two digits of the postal code. `sectorKey` folds a stray 2A/2B back to « 20 »
   so such a row could still be matched.
-- **Matching is on two characters, on both sides.** `departmentFromPostalCode` returns
+- **A row may carry a postal code instead, and it wins.** Since 2026-09-29 the same `Code`
+  column accepts five digits (« 69003 »). `sectorForLead` looks up the lead's normalised
+  postal code first and falls back to its department, so only the exceptions are entered:
+  management split the 69 by postal code between two reps, and every 69 code without a row
+  of its own still goes to the « 69 » row. `territoryKey` tells the two apart (4–5 digits is
+  a postal code, 4 being an eaten leading zero); `Sector.scope` carries the result, and the
+  assign modal says « (code postal 69003) » when that is what answered. The bulk bar compares
+  **resolved** sectors, not departments — two 69 requests can belong to two reps. A postal
+  row also works where the department has none, which is one way to cover a DOM code.
+- **Department matching is on two characters, on both sides.** `departmentFromPostalCode` returns
   three digits overseas, where the department genuinely is 971…978, while the Airtable
   column holds two. Both are truncated to two, so a 974 request looks up « 97 » — which
   matches nothing, since the DOM are not sectorised. The modal says so (« département 97,

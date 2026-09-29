@@ -9,8 +9,9 @@
  * l'email du visiteur et qu'il correspond à un collaborateur. Sans identité,
  * on ne devine pas qui est « moi » : la liste complète reste le chemin normal.
  *
- * Le département de la demande oriente le choix : le commercial qui couvre le
- * secteur est remonté en tête de liste et proposé en un clic. Rien n'est
+ * Le code postal de la demande, sinon son département, oriente le choix : le
+ * commercial qui couvre le secteur est remonté en tête de liste et proposé en
+ * un clic. Rien n'est
  * imposé — la sectorisation est une recommandation, pas une règle d'écriture,
  * et un département non couvert (les DOM, notamment) laisse simplement la
  * liste dans son état alphabétique habituel.
@@ -67,8 +68,11 @@ export function AssignModal({
   const sector = sectorForLead(lead, sectors);
   // Seule la sectorisation porte le nom du département ; une demande n'en
   // stocke que le numéro. Hors secteur — les DOM — on affiche donc le numéro
-  // seul, ce qui reste la clé du choix.
-  const departmentName = sector?.name ?? '';
+  // seul, ce qui reste la clé du choix. Quand c'est un code postal qui a
+  // répondu, son nom est celui d'une zone (« Lyon 3e ») et non du
+  // département : on va chercher la ligne départementale à part.
+  const departmentName =
+    (sector?.scope === 'department' ? sector.name : sectors.get(department)?.name) ?? '';
   const locality = formatLocality(lead.address);
   const options = useMemo(
     () => staffOptionsFor(staff, sector, coverage),
@@ -206,7 +210,14 @@ export function AssignModal({
                   aria-hidden="true"
                 />
                 <span className="min-w-0">
-                  <span className="text-muted">Commercial du secteur : </span>
+                  <span className="text-muted">
+                    Commercial du secteur
+                    {/* Le code postal est dit quand c'est lui qui a répondu :
+                        sinon, voir un autre nom que celui du département
+                        ressemblerait à une erreur. */}
+                    {sector?.scope === 'postalCode' && ` (code postal ${sector.code})`}
+                    {' : '}
+                  </span>
                   {sector ? (
                     <span className="font-semibold text-ink">
                       {sector.staffIds

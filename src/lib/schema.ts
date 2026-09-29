@@ -109,10 +109,13 @@ export const LEAD = {
  *
  * Une ligne par département métropolitain — 95 lignes, 8 commerciaux — créée
  * le 27/08/2026 à partir du fichier RH ; ce découpage n'existait auparavant
- * dans aucune base. Ne pas le confondre avec les champs « Département
+ * dans aucune base. Depuis septembre 2026, une ligne peut aussi porter un code
+ * postal sur cinq chiffres, qui prime sur son département : c'est ainsi que le
+ * 69 se découpe entre commerciaux sans renoncer au rattachement départemental. Ne pas le confondre avec les champs « Département
  * couvert » des tables installateurs, qui décrivent les partenaires poseurs.
  *
- * `code` est un **texte** de deux caractères, zéro initial compris (« 01 »).
+ * `code` est un **texte** : deux caractères, zéro initial compris (« 01 »),
+ * ou cinq chiffres pour un code postal (« 69003 »).
  * Jamais un nombre : un node Airtable n8n en mise à jour pré-remplit les
  * champs numériques à 0 et écraserait les codes. La Corse y vaut « 20 » et non
  * 2A/2B, pour coller au champ « Département » des demandes, qui n'est que les

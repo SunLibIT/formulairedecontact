@@ -6,6 +6,14 @@
  * demande ?* Aucune écriture — la sectorisation est une donnée de référence,
  * jamais recopiée sur la demande.
  *
+ * **Une ligne porte un département ou un code postal.** Le code sur deux
+ * caractères couvre tout le département ; un code sur cinq chiffres ne couvre
+ * que ce code postal et **prime** sur la ligne de son département. C'est ce
+ * qui permet de découper un département entre plusieurs commerciaux — le 69,
+ * où Lyon est réparti par code postal — sans renoncer au rattachement par
+ * département partout ailleurs : on ne saisit que les exceptions, et un code
+ * postal sans ligne à lui retombe sur son département.
+ *
  * Deux précautions qui expliquent la forme du code :
  *
  * **Le rapprochement se fait sur deux caractères.** Les tables ne s'accordent
@@ -22,14 +30,16 @@
  * historique l'a vide alors que leur code postal est renseigné.
  */
 import { formatPersonName } from './format';
-import { departmentCodeOf } from './geo';
+import { departmentCodeOf, normalisePostalCode } from './geo';
 import type { Lead, StaffMember, Territory } from './records';
 
-/** Un département sectorisé, vu depuis l'interface. */
+/** Un secteur — département ou code postal — vu depuis l'interface. */
 export interface Sector {
-  /** Clé de rapprochement, deux caractères. */
+  /** Clé de rapprochement : deux caractères, ou cinq chiffres pour un code postal. */
   code: string;
-  /** Nom du département, s'il est renseigné. */
+  /** Granularité de la ligne. Un code postal prime sur son département. */
+  scope: 'department' | 'postalCode';
+  /** Nom du département ou de la zone, s'il est renseigné. */
   name: string;
   region: string;
   /** Commerciaux qui le couvrent — un, en pratique. */
@@ -55,7 +65,24 @@ export function sectorKey(department: string): string {
   return key === '2A' || key === '2B' ? '20' : key;
 }
 
-/** Clé de rapprochement d'une demande — champ Airtable, sinon code postal. */
+/**
+ * Clé de rapprochement d'une ligne de la table.
+ *
+ * Quatre ou cinq chiffres désignent un code postal — quatre, c'est un zéro
+ * initial mangé par un tableur, « 1000 » pour 01000. Tout le reste est un code
+ * de département, lu par `sectorKey`.
+ */
+export function territoryKey(code: string): string {
+  const raw = (code ?? '').trim();
+  return /^\d{4,5}$/.test(raw) ? normalisePostalCode(raw) : sectorKey(raw);
+}
+
+/** Vrai si la clé désigne un code postal plutôt qu'un département. */
+export function isPostalKey(key: string): boolean {
+  return key.length === 5;
+}
+
+/** Clé départementale d'une demande — champ Airtable, sinon code postal. */
 export function sectorKeyOf(lead: Lead): string {
   return sectorKey(departmentCodeOf(lead.address.department, lead.address.postalCode));
 }
@@ -73,13 +100,14 @@ export function buildSectorIndex(territories: Territory[]): SectorIndex {
 
   for (const t of territories) {
     if (!t.active) continue;
-    const key = sectorKey(t.code);
+    const key = territoryKey(t.code);
     if (!key) continue;
 
     const existing = index.get(key);
     if (!existing) {
       index.set(key, {
         code: key,
+        scope: isPostalKey(key) ? 'postalCode' : 'department',
         name: t.name,
         region: t.region,
         staffIds: [...t.staffIds],
@@ -94,13 +122,26 @@ export function buildSectorIndex(territories: Territory[]): SectorIndex {
   return index;
 }
 
-/** Secteur d'une demande, ou `null` si son département n'est pas couvert. */
+/**
+ * Secteur d'une demande, ou `null` si ni son code postal ni son département
+ * ne sont couverts.
+ *
+ * Le code postal d'abord : une ligne à cinq chiffres est une exception
+ * délibérée au découpage départemental, elle doit l'emporter. Sans ligne à
+ * lui, on retombe sur le département — c'est le cas de la très grande majorité
+ * des demandes.
+ */
 export function sectorForLead(lead: Lead, index: SectorIndex): Sector | null {
+  const postalCode = normalisePostalCode(lead.address.postalCode);
+  if (postalCode.length === 5) {
+    const exact = index.get(postalCode);
+    if (exact) return exact;
+  }
   const key = sectorKeyOf(lead);
   return key ? index.get(key) ?? null : null;
 }
 
-/** Codes départements couverts par un collaborateur, triés. */
+/** Codes — départements et codes postaux — couverts par un collaborateur, triés. */
 export type CoverageIndex = ReadonlyMap<string, string[]>;
 
 /**
@@ -114,7 +155,7 @@ export function coverageByStaff(territories: Territory[]): CoverageIndex {
 
   for (const t of territories) {
     if (!t.active) continue;
-    const key = sectorKey(t.code);
+    const key = territoryKey(t.code);
     if (!key) continue;
 
     for (const id of t.staffIds) {

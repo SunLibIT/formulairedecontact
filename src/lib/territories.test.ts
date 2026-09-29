@@ -10,6 +10,7 @@ import {
   sectorKeyOf,
   staffGroups,
   staffOptionsFor,
+  territoryKey,
   OTHER_GROUP,
   SECTORISED_GROUP,
 } from './territories';
@@ -90,6 +91,22 @@ describe('sectorKeyOf', () => {
   });
 });
 
+describe('territoryKey', () => {
+  it('garde un code postal sur cinq chiffres', () => {
+    expect(territoryKey('69003')).toBe('69003');
+  });
+
+  it('restitue le zéro initial d’un code postal tronqué', () => {
+    expect(territoryKey('1000')).toBe('01000');
+  });
+
+  it('lit tout le reste comme un département', () => {
+    expect(territoryKey('33')).toBe('33');
+    expect(territoryKey('2B')).toBe('20');
+    expect(territoryKey('')).toBe('');
+  });
+});
+
 describe('buildSectorIndex', () => {
   it('indexe par code sur deux caractères', () => {
     const index = buildSectorIndex([territory()]);
@@ -139,7 +156,67 @@ describe('sectorForLead', () => {
   });
 });
 
+describe('sectorForLead — découpage par code postal', () => {
+  // Le 69 tel que la direction l'a redécoupé : le département reste à
+  // Philippe, quelques codes postaux lyonnais passent à Romain.
+  const index = buildSectorIndex([
+    territory({ id: 'r69', code: '69', name: 'Rhône', staffIds: ['recPhilippe'] }),
+    territory({ id: 'r69003', code: '69003', name: 'Lyon 3e', staffIds: ['recRomain'] }),
+  ]);
+
+  it('fait primer le code postal sur son département', () => {
+    const sector = sectorForLead(lead({ postalCode: '69003' }), index);
+    expect(sector?.code).toBe('69003');
+    expect(sector?.scope).toBe('postalCode');
+    expect(sector?.staffIds).toEqual(['recRomain']);
+  });
+
+  it('prime même quand le champ département est renseigné', () => {
+    // Les demandes de contact portent « 69 » dans leur colonne Département :
+    // c'est le code postal qui doit trancher.
+    expect(sectorForLead(lead({ department: '69', postalCode: '69003' }), index)?.code).toBe(
+      '69003',
+    );
+  });
+
+  it('retombe sur le département pour un code postal sans ligne', () => {
+    const sector = sectorForLead(lead({ postalCode: '69100' }), index);
+    expect(sector?.code).toBe('69');
+    expect(sector?.scope).toBe('department');
+  });
+
+  it('retombe sur le département sans code postal', () => {
+    expect(sectorForLead(lead({ department: '69' }), index)?.code).toBe('69');
+  });
+
+  it('ignore une ligne de code postal désactivée', () => {
+    const off = buildSectorIndex([
+      territory({ id: 'r69', code: '69', staffIds: ['recPhilippe'] }),
+      territory({ id: 'r69003', code: '69003', staffIds: ['recRomain'], active: false }),
+    ]);
+    expect(sectorForLead(lead({ postalCode: '69003' }), off)?.code).toBe('69');
+  });
+
+  it('peut couvrir un code postal dont le département ne l’est pas', () => {
+    // Les DOM ne sont pas sectorisés, mais rien n'empêche d'y rattacher un
+    // code postal précis.
+    const dom = buildSectorIndex([territory({ code: '97400', staffIds: ['recIlan'] })]);
+    expect(sectorForLead(lead({ postalCode: '97400' }), dom)?.code).toBe('97400');
+    expect(sectorForLead(lead({ postalCode: '97410' }), dom)).toBeNull();
+  });
+});
+
 describe('coverageByStaff', () => {
+  it('liste les codes postaux à côté des départements', () => {
+    const coverage = coverageByStaff([
+      territory({ id: 'r1', code: '69', staffIds: ['recPhilippe'] }),
+      territory({ id: 'r2', code: '69003', staffIds: ['recRomain'] }),
+      territory({ id: 'r3', code: '69001', staffIds: ['recRomain'] }),
+    ]);
+    expect(coverage.get('recPhilippe')).toEqual(['69']);
+    expect(coverage.get('recRomain')).toEqual(['69001', '69003']);
+  });
+
   it('liste les départements de chaque commercial, triés', () => {
     const coverage = coverageByStaff([
       territory({ id: 'r1', code: '47', staffIds: ['recEdouard'] }),
@@ -187,13 +264,13 @@ describe('formatCoverage', () => {
 
 describe('formatSector', () => {
   it('associe code et nom', () => {
-    expect(formatSector({ code: '33', name: 'Gironde', region: '', staffIds: [] })).toBe(
+    expect(formatSector({ code: '33', scope: 'department', name: 'Gironde', region: '', staffIds: [] })).toBe(
       '33 · Gironde',
     );
   });
 
   it('se contente du code si le nom manque', () => {
-    expect(formatSector({ code: '33', name: '', region: '', staffIds: [] })).toBe('33');
+    expect(formatSector({ code: '33', scope: 'department', name: '', region: '', staffIds: [] })).toBe('33');
   });
 });
 
@@ -261,6 +338,19 @@ describe('staffOptionsFor', () => {
     const options = staffOptionsFor(staff, null, coverage);
     expect(options.every((o) => o.group === SECTORISED_GROUP)).toBe(true);
     expect(staffGroups(null)).toEqual([SECTORISED_GROUP, OTHER_GROUP]);
+  });
+
+  it('met en avant le titulaire d’un code postal plutôt que celui du département', () => {
+    const lyon = [
+      territory({ id: 'r69', code: '69', staffIds: ['recPhilippe'] }),
+      territory({ id: 'r69003', code: '69003', staffIds: ['recRomain'] }),
+    ];
+    const team = [staffMember('recPhilippe', 'Philippe G'), staffMember('recRomain', 'Romain C')];
+    const s69003 = sectorForLead(lead({ postalCode: '69003' }), buildSectorIndex(lyon));
+    const options = staffOptionsFor(team, s69003, coverageByStaff(lyon));
+    expect(options.find((o) => o.value === 'recRomain')?.group).toBe('Secteur 69003');
+    // Philippe reste sectorisé, simplement pas en tête pour ce code postal.
+    expect(options.find((o) => o.value === 'recPhilippe')?.group).toBe(SECTORISED_GROUP);
   });
 
   it('annonce trois groupes quand le secteur est connu', () => {

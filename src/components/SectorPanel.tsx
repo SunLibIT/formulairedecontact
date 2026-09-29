@@ -1,8 +1,10 @@
 /**
  * Sectorisation commerciale — administration de la table de référence.
  *
- * Une ligne = un département français = un commercial. C'est cette table qui
- * oriente les listes d'assignation ; la modifier ici change immédiatement ce
+ * Une ligne = un département français, ou un code postal, = un commercial. Le
+ * code postal prime sur son département : on ne saisit que les exceptions, là
+ * où la direction découpe un département (le 69, par exemple). C'est cette
+ * table qui oriente les listes d'assignation ; la modifier ici change immédiatement ce
  * que voient les autres écrans, d'où le rechargement après chaque écriture.
  *
  * ## Ce que la page fait, et ce qu'elle refuse de faire
@@ -17,7 +19,7 @@
  * référence se relit constamment ; attendre le serveur à chaque frappe rendrait
  * la page poussive pour rien.
  *
- * Le **code département est immuable** après création. C'est la clé de
+ * Le **code est immuable** après création. C'est la clé de
  * rapprochement avec les demandes : la changer sur une ligne existante
  * déplacerait silencieusement tout un secteur. Pour corriger un code, on
  * supprime et on recrée — le geste est alors explicite.
@@ -32,7 +34,7 @@ import { createRecord, deleteRecord, updateRecord } from '../lib/airtable';
 import type { StaffMember, Territory } from '../lib/records';
 import { REGIONS, TABLES, TERRITORY } from '../lib/schema';
 import { auditStaff, type Anomaly } from '../lib/staffAudit';
-import { coverageByStaff, formatCoverage } from '../lib/territories';
+import { coverageByStaff, formatCoverage, territoryKey } from '../lib/territories';
 import { formatPersonName } from '../lib/format';
 import { Callout, SearchField, SecondaryButton } from './ui';
 import { SearchableSelect } from './SearchableSelect';
@@ -95,7 +97,8 @@ export function SectorModal({ onClose, ...panel }: Props & { onClose: () => void
                 Sectorisation commerciale
               </h2>
               <p className="text-sm text-muted">
-                Un département, un commercial. Cette table oriente les listes
+                Un département ou un code postal, un commercial. Un code postal
+                prime sur son département. Cette table oriente les listes
                 d&apos;assignation.
               </p>
             </div>
@@ -278,7 +281,7 @@ export function SectorPanel({
         <SearchField
           value={query}
           onChange={setQuery}
-          placeholder="Département, code, région, commercial…"
+          placeholder="Département, code postal, région, commercial…"
         />
         <SecondaryButton icon={RefreshCw} busy={loading} onClick={() => void onRefresh()}>
           Actualiser
@@ -291,7 +294,7 @@ export function SectorPanel({
       </div>
 
       <p aria-live="polite" className="text-sm text-muted">
-        {rows.length} département{rows.length > 1 ? 's' : ''}
+        {rows.length} secteur{rows.length > 1 ? 's' : ''}
         {rows.length !== territories.length && ` sur ${territories.length}`}
         {/* Une ligne sans commercial ne rapproche rien : c'est le défaut le plus
             coûteux de cette table, et il ne se voit pas autrement. */}
@@ -305,7 +308,7 @@ export function SectorPanel({
       {creating && canWrite && (
         <NewRow
           staffOptions={staffOptions}
-          existingCodes={territories.map((t) => t.code)}
+          existingCodes={territories.map((t) => territoryKey(t.code))}
           onCancel={() => setCreating(false)}
           onCreate={async (fields) => {
             setFailure('');
@@ -325,7 +328,7 @@ export function SectorPanel({
           <thead>
             <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
               <th scope="col" className="px-4 py-3 font-medium">Code</th>
-              <th scope="col" className="px-4 py-3 font-medium">Département</th>
+              <th scope="col" className="px-4 py-3 font-medium">Nom</th>
               <th scope="col" className="px-4 py-3 font-medium">Région</th>
               <th scope="col" className="px-4 py-3 font-medium">Commercial</th>
               <th scope="col" className="px-4 py-3 font-medium">Actif</th>
@@ -356,7 +359,7 @@ export function SectorPanel({
                           void write(row, { [TERRITORY.name]: value }, { name: value });
                         }}
                         className="w-full min-w-[8rem] rounded-control border border-line bg-surface px-2 py-1 text-ink"
-                        aria-label={`Nom du département ${row.code}`}
+                        aria-label={`Nom du secteur ${row.code}`}
                       />
                     ) : (
                       <span className="text-ink">{row.name}</span>
@@ -373,7 +376,7 @@ export function SectorPanel({
                           void write(row, { [TERRITORY.region]: value }, { region: value });
                         }}
                         className="w-full min-w-[11rem] rounded-control border border-line bg-surface px-2 py-1 text-ink"
-                        aria-label={`Région du département ${row.code}`}
+                        aria-label={`Région du secteur ${row.code}`}
                       >
                         <option value="">—</option>
                         {REGIONS.map((r) => (
@@ -391,7 +394,7 @@ export function SectorPanel({
                     {canWrite ? (
                       <div className="min-w-[13rem]">
                         <SearchableSelect
-                          ariaLabel={`Commercial du département ${row.code}`}
+                          ariaLabel={`Commercial du secteur ${row.code}`}
                           emptyLabel="Aucun"
                           searchPlaceholder="Rechercher…"
                           value={row.staffIds[0] ?? ''}
@@ -427,7 +430,7 @@ export function SectorPanel({
                           void write(row, { [TERRITORY.active]: value }, { active: value });
                         }}
                         className="h-4 w-4 accent-teal"
-                        aria-label={`Département ${row.code} actif`}
+                        aria-label={`Secteur ${row.code} actif`}
                       />
                       <span className="text-xs text-muted">
                         {row.active ? 'Actif' : 'Neutralisé'}
@@ -476,7 +479,7 @@ export function SectorPanel({
             {rows.length === 0 && (
               <tr>
                 <td colSpan={canWrite ? 6 : 5} className="px-4 py-8 text-center text-muted">
-                  {loading ? 'Chargement…' : 'Aucun département ne correspond.'}
+                  {loading ? 'Chargement…' : 'Aucun secteur ne correspond.'}
                 </td>
               </tr>
             )}
@@ -485,10 +488,11 @@ export function SectorPanel({
       </div>
 
       <p className="text-xs text-muted">
-        Le code département est la clé de rapprochement avec les demandes : il ne
-        s&apos;édite pas après création. Pour le corriger, supprimez la ligne et
-        recréez-la. Neutraliser une ligne la retire de la sectorisation sans
-        perdre son historique.
+        Le code est la clé de rapprochement avec les demandes : deux caractères
+        pour un département, cinq chiffres pour un code postal, qui l&apos;emporte
+        alors sur son département. Il ne s&apos;édite pas après création. Pour le
+        corriger, supprimez la ligne et recréez-la. Neutraliser une ligne la
+        retire de la sectorisation sans perdre son historique.
       </p>
     </div>
   );
@@ -558,9 +562,9 @@ function StaffAudit({ anomalies }: { anomalies: Anomaly[] }) {
 /**
  * Ligne de création.
  *
- * Le code est vérifié ici, avant l'appel : deux caractères, et pas déjà pris.
- * Airtable accepterait un doublon sans broncher, et deux lignes pour le même
- * département fusionneraient leurs commerciaux dans l'index — un secteur se
+ * Le code est vérifié ici, avant l'appel : deux caractères ou cinq chiffres, et
+ * pas déjà pris. Airtable accepterait un doublon sans broncher, et deux lignes
+ * pour le même code fusionneraient leurs commerciaux dans l'index — un secteur se
  * retrouverait avec deux titulaires sans que personne l'ait décidé.
  */
 function NewRow({
@@ -581,17 +585,22 @@ function NewRow({
   const [busy, setBusy] = useState(false);
 
   const trimmed = code.trim().toUpperCase();
-  const taken = existingCodes.includes(trimmed);
-  // Deux caractères : « 01 » et non « 1 ». La colonne est un texte, et le zéro
-  // initial fait partie de la clé.
-  const wellFormed = /^[0-9]{2}$/.test(trimmed) || trimmed === '2A' || trimmed === '2B';
+  const taken = existingCodes.includes(territoryKey(trimmed));
+  // Deux caractères : « 01 » et non « 1 ». Cinq chiffres pour un code postal :
+  // « 01000 » et non « 1000 ». La colonne est un texte, et le zéro initial
+  // fait partie de la clé.
+  const wellFormed =
+    /^[0-9]{2}$/.test(trimmed) ||
+    /^[0-9]{5}$/.test(trimmed) ||
+    trimmed === '2A' ||
+    trimmed === '2B';
   const problem = !trimmed
     ? ''
     : taken
       ? `Le code ${trimmed} existe déjà.`
       : wellFormed
         ? ''
-        : 'Deux caractères attendus, zéro initial compris — « 01 », « 20 », « 2A ».';
+        : 'Département sur deux caractères (« 01 », « 20 ») ou code postal sur cinq chiffres (« 69003 »).';
 
   return (
     <div className="rounded-card border border-teal-soft bg-teal-soft/40 p-4">
@@ -602,19 +611,19 @@ function NewRow({
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="33"
-            maxLength={2}
-            className="w-20 rounded-control border border-line bg-surface px-2 py-1.5 text-ink"
+            placeholder="33 ou 69003"
+            maxLength={5}
+            className="w-28 rounded-control border border-line bg-surface px-2 py-1.5 text-ink"
           />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-muted">Département</span>
+          <span className="mb-1 block text-xs font-medium text-muted">Nom</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Gironde"
+            placeholder="Gironde, Lyon 3e…"
             className="w-44 rounded-control border border-line bg-surface px-2 py-1.5 text-ink"
           />
         </label>
@@ -638,7 +647,7 @@ function NewRow({
         <div className="min-w-[13rem]">
           <span className="mb-1 block text-xs font-medium text-muted">Commercial</span>
           <SearchableSelect
-            ariaLabel="Commercial du nouveau département"
+            ariaLabel="Commercial du nouveau secteur"
             emptyLabel="Aucun"
             searchPlaceholder="Rechercher…"
             value={staffId}
