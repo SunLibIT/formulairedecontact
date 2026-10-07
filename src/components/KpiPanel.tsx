@@ -23,7 +23,7 @@ import {
   type Distribution,
 } from '../lib/kpi';
 import type { Lead } from '../lib/records';
-import { STATUSES, STATUS_TONE } from '../lib/schema';
+import { orderedCounts, statusForRole, type StatusRegistry } from '../lib/statuses';
 import { ChartCard, Columns, HBars, Meter, type BarDatum } from './Charts';
 import { KpiExportButton } from './KpiExportButton';
 import { SearchableSelect } from './SearchableSelect';
@@ -41,11 +41,13 @@ export function KpiPanel({
   contactLeads,
   solarLeads,
   filters,
+  statuses,
 }: {
   contactLeads: Lead[];
   solarLeads: Lead[];
   /** Bornes de période, partagées avec les autres onglets. */
   filters: FilterState;
+  statuses: StatusRegistry;
 }) {
   const [source, setSource] = useState<Source>('contact');
   const [assignee, setAssignee] = useState('');
@@ -89,14 +91,16 @@ export function KpiPanel({
   }, [scoped, filters.from, filters.to]);
 
   const summary = useMemo(() => summarise(current), [current]);
+  // Le statut d'entrée, par son rôle : son nom et son ton courants.
+  const fresh = statusForRole(statuses, 'nouveau');
   const variation = previous ? trend(current.length, previous.length) : null;
 
   const statusBars: BarDatum[] = useMemo(
     () =>
-      STATUSES.filter((s) => summary.byStatus[s] > 0).map((s) => ({
-        label: s,
-        value: summary.byStatus[s],
-        tone: STATUS_TONE[s],
+      orderedCounts(summary.byStatus).map(({ status, count }) => ({
+        label: status.name,
+        value: count,
+        tone: status.tone,
       })),
     [summary],
   );
@@ -172,7 +176,7 @@ export function KpiPanel({
         {/* Poussé à droite : l'export n'est pas un filtre, il agit sur le
             résultat des deux précédents. */}
         <div className="ml-auto">
-          <KpiExportButton
+          <KpiExportButton statuses={statuses.list}
             leads={current}
             scope={{
               source: SOURCES.find((s) => s.value === source)?.label ?? source,
@@ -225,7 +229,7 @@ export function KpiPanel({
             <StatTile
               label="À traiter"
               value={summary.untouched}
-              tone={STATUS_TONE.Nouveau}
+              tone={fresh.tone}
               hint={
                 summary.medianUntouchedAge != null
                   ? `ancienneté médiane ${summary.medianUntouchedAge} j`
@@ -274,7 +278,7 @@ export function KpiPanel({
               tone="fresh"
               hint={`${
                 current.length - summary.unknownStatus - summary.untouched
-              } demandes sorties de « Nouveau » sur ${current.length - summary.unknownStatus}`}
+              } demandes sorties de « ${fresh.name} » sur ${current.length - summary.unknownStatus}`}
             />
           </div>
 

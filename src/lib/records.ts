@@ -9,7 +9,8 @@
  */
 import type { AirtableRecord } from './airtable';
 import { departmentFromPostalCode, normalisePostalCode } from './geo';
-import { CONTACT, LEAD, STAFF, TERRITORY, type Priority, type Status } from './schema';
+import { CONTACT, LEAD, STAFF, TERRITORY, type Priority } from './schema';
+import { DEFAULT_REGISTRY, resolveStatus, type StatusDef, type StatusRegistry } from './statuses';
 
 export type LeadSource = 'contact' | 'solar';
 
@@ -64,7 +65,12 @@ export interface Lead {
     region: string;
     country: string;
   };
-  status: Status;
+  /** Statut résolu depuis la table Statuts. Voir `lib/statuses.ts`. */
+  status: StatusDef;
+  /** Identifiant Statuts lu dans le lien, `null` si la demande n'en a pas encore. */
+  statusLinkId: string | null;
+  /** Libellé de l'ancien select, relu en repli tant que le lien est vide. */
+  statusLegacy: string;
   priority: Priority;
   partner: string;
   /** Identifiants d'enregistrement RH liés. */
@@ -127,8 +133,30 @@ const bool = (v: unknown): boolean => {
 const ids = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 
-/** Défaut sûr : un statut absent vaut « Nouveau », pas une valeur vide. */
-const asStatus = (v: unknown): Status => (str(v) || 'Nouveau') as Status;
+/** Lien et libellé hérité, résolus en statut. Un statut absent vaut « nouveau ». */
+function statusFields(link: unknown, legacy: unknown, statuses: StatusRegistry) {
+  const statusLinkId = ids(link)[0] ?? null;
+  const statusLegacy = str(legacy);
+  return {
+    status: resolveStatus(statuses, statusLinkId, statusLegacy),
+    statusLinkId,
+    statusLegacy,
+  };
+}
+
+/**
+ * Résout à nouveau le statut des leads contre un registre à jour.
+ *
+ * Appelé quand un admin modifie la table Statuts : le lien ne change pas, le
+ * statut qu'il désigne si — nom, ton, ordre. Les leads dont le statut n'a pas
+ * bougé gardent leur identité d'objet.
+ */
+export function withStatuses(leads: Lead[], statuses: StatusRegistry): Lead[] {
+  return leads.map((lead) => {
+    const status = resolveStatus(statuses, lead.statusLinkId, lead.statusLegacy);
+    return status === lead.status ? lead : { ...lead, status };
+  });
+}
 const asPriority = (v: unknown): Priority => (str(v) || 'Moyenne') as Priority;
 
 export function toStaffMember(record: AirtableRecord): StaffMember {
@@ -172,6 +200,7 @@ function resolveNames(assigneeIds: string[], staff: Map<string, string>): string
 export function toContactLead(
   record: AirtableRecord,
   staff: Map<string, string>,
+  statuses: StatusRegistry = DEFAULT_REGISTRY,
 ): Lead {
   const f = record.fields;
   const firstName = str(f[CONTACT.firstName]);
@@ -203,7 +232,7 @@ export function toContactLead(
       region: str(f[CONTACT.region]),
       country: str(f[CONTACT.country]),
     },
-    status: asStatus(f[CONTACT.status]),
+    ...statusFields(f[CONTACT.statusLink], f[CONTACT.statusLegacy], statuses),
     priority: asPriority(f[CONTACT.priority]),
     partner: str(f[CONTACT.partner]),
     assigneeIds,
@@ -217,6 +246,7 @@ export function toContactLead(
 export function toSolarLead(
   record: AirtableRecord,
   staff: Map<string, string>,
+  statuses: StatusRegistry = DEFAULT_REGISTRY,
 ): Lead {
   const f = record.fields;
   const firstName = str(f[LEAD.firstName]);
@@ -253,7 +283,7 @@ export function toSolarLead(
       region: '',
       country: '',
     },
-    status: asStatus(f[LEAD.status]),
+    ...statusFields(f[LEAD.statusLink], f[LEAD.statusLegacy], statuses),
     priority: asPriority(f[LEAD.priority]),
     partner: str(f[LEAD.partner]),
     assigneeIds,

@@ -45,7 +45,8 @@ Typeform ──webhook──► api/typeform-webhook ──► Airtable
 
 | Layer | Responsibility |
 | --- | --- |
-| `lib/schema.ts` | table and field **ids**, select options, status→tone map. Single source of truth |
+| `lib/schema.ts` | table and field **ids**, select options, status roles and seed. Single source of truth |
+| `lib/statuses.ts` | the Statuts table: reading, resolving a lead's status, counting by id or role |
 | `lib/airtable.ts` | transport: pagination, upsert, batched writes, 429 retry, proxy-or-direct |
 | `lib/records.ts` | normalises both Airtable tables into one `Lead` type |
 | `lib/filters.ts` | filtering, sorting, counters |
@@ -81,8 +82,9 @@ This base has been renamed repeatedly; names are not stable. The one exception i
 - `typecast` stays `false` everywhere. An unknown select option must fail loudly rather
   than be silently created — that is how the legacy table ended up with ~170 parasitic
   `Statut` options, including timestamps.
-- Status and priority are written as the exact French labels in `STATUSES` / `PRIORITIES`,
-  accents included. They must match the Airtable options character for character.
+- Priority is written as the exact French label in `PRIORITIES`, accents included. It must
+  match the Airtable option character for character. Status is **not** a select any more —
+  see *Editable statuses* below.
 - Write limits: **10 records per request, 5 requests per second per base.** Bulk writes go
   through `updateRecords`, which batches, spaces, reports progress and accepts an
   `AbortSignal`. 200 rows takes about five seconds — never block the UI on it.
@@ -185,7 +187,7 @@ it sets.
 
 Two smaller invariants worth keeping:
 
-- `summarise` counts a status outside `STATUSES` in `unknownStatus` and excludes it from
+- `summarise` counts a status that resolves to no known one (`status.unknown`) in `unknownStatus` and excludes it from
   `handledRate`. The base is clean today and was not always: an import once created ~170
   parasitic `Statut` options. An unreadable status is not a handled one.
 - Ageing (`medianUntouchedAge`, `staleCount`) is measured against *now*, on a set already
@@ -395,7 +397,7 @@ and never writes — that is the whole point.
 
 Merging is the heavy answer to a repeat request. The light one — most groups need nothing
 transferred — is to archive the surplus row where you see it. `archiveDuplicate` in
-`App.tsx` writes one field, `Statut` → « Archivé », and patches the row locally. No
+`App.tsx` writes one field, the status link → the status of role `archive`, and patches the row locally. No
 `DELETE`, same as everywhere else.
 
 - **The button exists only on a row the index has marked.** `duplicates.marks.get(id)`
@@ -420,7 +422,8 @@ transferred — is to archive the surplus row where you see it. `archiveDuplicat
 
 ### Colour and icons
 
-The colour code is declared once in `STATUS_TONE` (`schema.ts`) and rendered by
+Each status carries its tone in the Statuts table (`Ton`); the closed palette is `TONES` in
+`schema.ts`, rendered by
 `lib/tones.ts`. Badges, stat tiles, chart bars and row edges all read from it, so a tone
 change propagates everywhere. `StatTile` even derives its icon from its tone, which makes
 divergence impossible rather than merely discouraged.
@@ -447,3 +450,45 @@ Python, stdlib only. `repair-xlsx.py` rebuilds the historical contact requests f
 corrupted Excel export (two exports concatenated, one a raw CSV dump collapsed into a
 single column); `upload-to-airtable.py` loads them with an idempotent upsert on
 `Response ID`. `scripts/records.json` holds personal data and is gitignored.
+
+### Editable statuses
+
+Since 2026-10-07 statuses live in the **Statuts** table (`tblipMIYgKRdFOI3y`, same base —
+a link field can only point inside its base): `Nom`, `Ton`, `Ordre`, `Archivé`, `Rôle`.
+Admins add, rename, recolour, reorder and archive them from the app
+(`StatusManagerModal`, opened by the gear next to the record's Statut select or from the
+account menu). The old hardcoded `STATUSES` / `STATUS_TONE` are gone.
+
+- **A lead's status is a link**, `Statut (lien)` — `CONTACT.statusLink` / `LEAD.statusLink`.
+  Renaming a status rewrites no lead. The old single select (`statusLegacy`) is **read
+  only**: never written again, read as a fallback while a lead has no link.
+- **Never recognise a status by its name.** It changes. Filters and counters key on the
+  status **id**; business rules (KPI rates, archiving, stat tiles, « Hors critères »
+  button, Typeform creation) key on its **role** (`StatusRole`, the `Rôle` column).
+  `statusForRole` never returns undefined: it falls back to `DEFAULT_STATUSES`.
+- **`DEFAULT_STATUSES` holds the seven original statuses with their real record ids.**
+  Two jobs: fallback registry if the table fails to load, and the bridge for legacy
+  labels — a lead still on the old select resolves through the *original* label, then
+  by id in the live registry, so it survives a rename (`resolveStatus`).
+- **Role statuses cannot be archived** from the UI (« Statut système »). Archiving
+  « Nouveau » would remove from the menus the status every incoming request lands in, and
+  the webhook writes its id (`NEW_STATUS_ID`). Custom statuses have `role: null`: shown,
+  filtered and counted, but no rule hooks onto them — they count as neither kept nor
+  rejected in the qualification rate.
+- **Archive, never delete.** The proxy answers 405 to any `DELETE` on Statuts. An archived
+  status leaves the input menus but still shows on leads carrying it (« · archivé »), and
+  stays in the menu of a lead that carries it so saving does not rewrite it silently.
+- **Writes go through `requireAdmin`** (`api/_lib/auth.ts`): Google session **and** an
+  active RH member of `ADMIN_GROUPS` (Direction, Administratif). Stricter than
+  `requireWriter`: the historic no-Google regime lets every write through, but here it is
+  refused — « admins only » means nothing without a proven identity. The client mirrors it
+  with `auth.isAdmin` (only to hide buttons; the server is the gate).
+- **Renames propagate in place.** `useStatuses` caches the table like the sectorisation;
+  `useLeads` re-resolves loaded leads with `withStatuses` when the registry changes, rather
+  than re-normalising raw records, which would drop local patches. A status patch must
+  therefore carry `statusLinkId` — use `statusWrite`, which returns fields and local patch
+  together.
+- **Backfill.** Leads created before 2026-10-07 have no link until someone saves them (the
+  record dialog always rewrites the link). The legacy fallback makes that invisible. A
+  one-off backfill of `Statut (lien)` from the old select, matching on the original labels,
+  would let the old field be removed.

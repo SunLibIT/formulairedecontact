@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mergeFields, planMerge } from './merge';
 import type { Lead } from './records';
 import { CONTACT } from './schema';
+import { legacyStatus as st } from './statuses';
 
 function lead(patch: Partial<Lead> & { id: string }): Lead {
   return {
@@ -26,7 +27,9 @@ function lead(patch: Partial<Lead> & { id: string }): Lead {
       region: '',
       country: '',
     },
-    status: 'Nouveau',
+    status: st('Nouveau'),
+    statusLinkId: null,
+    statusLegacy: '',
     priority: 'Moyenne',
     partner: '',
     assigneeIds: [],
@@ -85,18 +88,19 @@ describe('planMerge', () => {
     // Ce sont des décisions commerciales : un « Hors Critères » de janvier ne
     // doit pas écraser le « Qualifié » d'août.
     const plan = planMerge([
-      lead({ id: 'recent', date: '2026-08-01T00:00:00.000Z', status: 'Qualifié', priority: 'Haute' }),
+      lead({ id: 'recent', date: '2026-08-01T00:00:00.000Z', status: st('Qualifié'), priority: 'Haute' }),
       lead({
         id: 'vieux',
         date: '2026-01-01T00:00:00.000Z',
-        status: 'Hors Critères',
+        status: st('Hors Critères'),
         priority: 'Basse',
       }),
     ]);
     const fields = mergeFields(plan!);
-    expect(fields[CONTACT.status]).toBeUndefined();
+    expect(fields[CONTACT.statusLink]).toBeUndefined();
+    expect(fields[CONTACT.statusLegacy]).toBeUndefined();
     expect(fields[CONTACT.priority]).toBeUndefined();
-    expect(plan?.target.status).toBe('Qualifié');
+    expect(plan?.target.status.name).toBe('Qualifié');
   });
 
   it('prend la valeur de la source la plus récente qui en porte une', () => {
@@ -140,13 +144,13 @@ describe('planMerge', () => {
     // `merged` sert à corriger l'écran sans recharger la table : il doit
     // décrire exactement ce que `mergeFields` envoie, sans rien de plus.
     const plan = planMerge([
-      lead({ id: 'cible', date: '2026-08-01T00:00:00.000Z', status: 'Qualifié' }),
+      lead({ id: 'cible', date: '2026-08-01T00:00:00.000Z', status: st('Qualifié') }),
       lead({
         id: 'vieux',
         date: '2026-01-01T00:00:00.000Z',
         phone: '0658706444',
         company: 'SARL Toiture',
-        status: 'Hors Critères',
+        status: st('Hors Critères'),
         address: {
           ...lead({ id: 'x' }).address,
           city: 'Lyon',
@@ -163,7 +167,7 @@ describe('planMerge', () => {
     // Le département suit le code postal : les deux décrivent le même lieu.
     expect(plan.merged.address.department).toBe('69');
     // Ni le statut, ni l'identité de la demande conservée.
-    expect(plan.merged.status).toBe('Qualifié');
+    expect(plan.merged.status.name).toBe('Qualifié');
     expect(plan.merged.id).toBe('cible');
     expect(plan.merged.date).toBe('2026-08-01T00:00:00.000Z');
   });

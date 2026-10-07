@@ -30,6 +30,7 @@ import { LeadModal } from './components/LeadModal';
 import { MergeModal } from './components/MergeModal';
 import { PeriodFilter } from './components/PeriodFilter';
 import { SectorModal } from './components/SectorPanel';
+import { StatusManagerModal } from './components/StatusManagerModal';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import {
   Callout,
@@ -44,7 +45,7 @@ import {
 } from './components/ui';
 import { useAdminAuth } from './hooks/useAdminAuth';
 import { useDeepLink } from './hooks/useDeepLink';
-import { useLeads, useStaff, useTerritories, type LeadTable } from './hooks/useLeads';
+import { useLeads, useStaff, useStatuses, useTerritories, type LeadTable } from './hooks/useLeads';
 import { useSelection } from './hooks/useSelection';
 import { useViewPreference } from './hooks/useViewPreference';
 import { useViewer } from './hooks/useViewer';
@@ -65,9 +66,12 @@ import {
 import { buildDuplicateIndex, groupByAddress, keepDuplicates } from './lib/duplicates';
 import { mergeFields, planMerge, type MergePlan } from './lib/merge';
 import type { Lead } from './lib/records';
-import { STATUS_TONE, type Status } from './lib/schema';
+import { countOf, statusForRole, type StatusRole } from './lib/statuses';
 import { sectorForLead, type Sector } from './lib/territories';
-import { WRITE_TARGET } from './lib/writeTargets';
+import { WRITE_TARGET, statusWrite } from './lib/writeTargets';
+
+/** Statuts qui ont leur tuile de compteur, par rôle. */
+const TILE_ROLES: readonly StatusRole[] = ['nouveau', 'a_contacter', 'qualifie'];
 
 /** Nombre de cartes rendues d'un coup — le reste à la demande. */
 const PAGE = 60;
@@ -104,15 +108,30 @@ export default function App() {
   const [merging, setMerging] = useState<MergePlan | null>(null);
   // Sectorisation : une couche au-dessus, ouverte depuis le menu du compte.
   const [sectorsOpen, setSectorsOpen] = useState(false);
+  // Gestion des statuts : réservée aux admins, ouverte depuis la fiche ou le menu du compte.
+  const [statusesOpen, setStatusesOpen] = useState(false);
 
   // Les deux tables sont chargées d'emblée : elles totalisent moins de 800
   // enregistrements, ce qui rend les compteurs d'onglets exacts et le
   // basculement instantané.
-  const contact = useLeads('contact', byId);
-  const solar = useLeads('solar', byId);
+  // Statuts de suivi, éditables par les admins. Tant que la table n'est pas
+  // arrivée, l'app tourne sur les sept statuts d'origine.
+  const statuses = useStatuses();
+  const contact = useLeads('contact', byId, statuses.registry);
+  const solar = useLeads('solar', byId, statuses.registry);
   // L'onglet KPI lit les deux tables ; on l'aligne sur les demandes de
   // contact pour l'état de chargement et le bouton d'actualisation.
   const active = tab === 'solar' ? solar : contact;
+
+  // Demandes par statut, les deux tables confondues, archivées comprises :
+  // c'est ce que la gestion des statuts annonce avant un archivage.
+  const statusUsage = useMemo(() => {
+    const usage = new Map<string, number>();
+    for (const lead of [...contact.leads, ...solar.leads]) {
+      usage.set(lead.status.id, (usage.get(lead.status.id) ?? 0) + 1);
+    }
+    return usage;
+  }, [contact.leads, solar.leads]);
 
   const [filters, setFilters] = useState<Record<View, FilterState>>({
     contact: EMPTY_FILTERS,
@@ -277,19 +296,23 @@ export default function App() {
       if (Object.keys(fields).length) {
         await updateRecord(target.tableId, plan.target.id, fields);
       }
+      const archived = statusWrite(
+        plan.target.source,
+        statusForRole(statuses.registry, 'archive'),
+      );
       await updateRecords(
         target.tableId,
-        plan.sources.map((s) => ({ id: s.id, fields: { [target.status]: 'Archivé' } })),
+        plan.sources.map((s) => ({ id: s.id, fields: archived.fields })),
       );
 
       // Correction locale plutôt qu'un rechargement de 440 lignes. `merged`
       // vient du plan, donc l'écran montre exactement ce qui a été écrit.
       const source = plan.target.source === 'contact' ? contact : solar;
       source.patchLocal(plan.target.id, plan.merged);
-      for (const s of plan.sources) source.patchLocal(s.id, { status: 'Archivé' });
+      for (const s of plan.sources) source.patchLocal(s.id, archived.local);
       selection.clear();
     },
-    [contact, solar, selection],
+    [contact, solar, selection, statuses.registry],
   );
 
   /**
@@ -307,19 +330,20 @@ export default function App() {
   const archiveDuplicate = useCallback(
     async (lead: Lead) => {
       const target = WRITE_TARGET[lead.source];
-      await updateRecord(target.tableId, lead.id, { [target.status]: 'Archivé' });
+      const archived = statusWrite(lead.source, statusForRole(statuses.registry, 'archive'));
+      await updateRecord(target.tableId, lead.id, archived.fields);
       // Correction locale : la ligne quitte la liste — `applyFilters` masque
       // les archivées — et sort de l'index des doublons, donc le compteur du
       // filtre baisse dans le même rendu.
       const source = lead.source === 'contact' ? contact : solar;
-      source.patchLocal(lead.id, { status: 'Archivé' });
+      source.patchLocal(lead.id, archived.local);
     },
-    [contact, solar],
+    [contact, solar, statuses.registry],
   );
 
   /** Bascule un statut depuis une tuile : re-cliquer désélectionne. */
-  const toggleStatus = (status: Status) =>
-    patchFilters({ status: current.status === status ? ALL : status });
+  const toggleStatus = (statusId: string) =>
+    patchFilters({ status: current.status === statusId ? ALL : statusId });
 
   const onSaved = (patch: Partial<Lead>) => {
     if (selected) active.patchLocal(selected.id, patch);
@@ -365,8 +389,9 @@ export default function App() {
       const localPatch: Partial<Lead> = {};
 
       if (patch.status) {
-        fields[target.status] = patch.status;
-        localPatch.status = patch.status;
+        const write = statusWrite(tab === 'solar' ? 'solar' : 'contact', patch.status);
+        Object.assign(fields, write.fields);
+        Object.assign(localPatch, write.local);
       }
       if (patch.priority) {
         fields[target.priority] = patch.priority;
@@ -428,7 +453,11 @@ export default function App() {
             </SecondaryButton>
             {/* Seul point de connexion de l'application. Invisible tant que le
                 serveur n'exige pas de session. */}
-            <AccountButton auth={auth} onOpenSectors={() => setSectorsOpen(true)} />
+            <AccountButton
+              auth={auth}
+              onOpenSectors={() => setSectorsOpen(true)}
+              onOpenStatuses={() => setStatusesOpen(true)}
+            />
           </div>
         </div>
       </header>
@@ -490,6 +519,7 @@ export default function App() {
               contactLeads={contact.leads}
               solarLeads={solar.leads}
               filters={current}
+              statuses={statuses.registry}
             />
           </>
         ) : (
@@ -501,27 +531,21 @@ export default function App() {
           {/* Ni couleur ni icône ne sont passées : la tuile les déduit du ton
               du statut qu'elle compte, donc elle affiche exactement le même
               signal visuel que le badge correspondant sur les cartes. */}
-          <StatTile
-            label="Nouveau"
-            value={stats.byStatus.Nouveau}
-            tone={STATUS_TONE.Nouveau}
-            active={current.status === 'Nouveau'}
-            onClick={() => toggleStatus('Nouveau')}
-          />
-          <StatTile
-            label="À contacter"
-            value={stats.byStatus['A contacter']}
-            tone={STATUS_TONE['A contacter']}
-            active={current.status === 'A contacter'}
-            onClick={() => toggleStatus('A contacter')}
-          />
-          <StatTile
-            label="Qualifié"
-            value={stats.byStatus.Qualifié}
-            tone={STATUS_TONE.Qualifié}
-            active={current.status === 'Qualifié'}
-            onClick={() => toggleStatus('Qualifié')}
-          />
+          {TILE_ROLES.map((role) => {
+            // Tuiles accrochées au rôle : le libellé est le nom courant du
+            // statut, donc un renommage s'y voit sans toucher au code.
+            const s = statusForRole(statuses.registry, role);
+            return (
+              <StatTile
+                key={role}
+                label={s.name}
+                value={countOf(stats.byStatus, s.id)}
+                tone={s.tone}
+                active={current.status === s.id}
+                onClick={() => toggleStatus(s.id)}
+              />
+            );
+          })}
           {/* Seule exception : « non assigné » n'est pas un statut. Son icône
               reprend celle de la ligne « assigné à » des cartes. */}
           <StatTile
@@ -671,6 +695,7 @@ export default function App() {
           <BulkActionBar
             count={selection.count}
             staff={staff.filter((m) => m.active)}
+            statuses={statuses.registry}
             sector={bulkSector}
             coverage={coverage}
             onApply={applyBulk}
@@ -714,10 +739,22 @@ export default function App() {
         />
       )}
 
+      {statusesOpen && auth.isAdmin && (
+        <StatusManagerModal
+          statuses={statuses.registry.list}
+          usage={statusUsage}
+          loadError={statuses.error}
+          onChange={statuses.replace}
+          onClose={() => setStatusesOpen(false)}
+        />
+      )}
+
       {selected && (
         <LeadModal
           lead={selected}
           staff={staff}
+          statuses={statuses.registry}
+          onManageStatuses={auth.isAdmin ? () => setStatusesOpen(true) : undefined}
           sectors={sectors}
           coverage={coverage}
           duplicate={duplicates.marks.get(selected.id)}

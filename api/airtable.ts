@@ -26,9 +26,12 @@
  *   AIRTABLE_BASE_ID par défaut la base « Simulateur Solaire »
  */
 
-import { googleAuthEnabled, requireWriter } from './_lib/auth.js';
+import { googleAuthEnabled, requireAdmin, requireWriter } from './_lib/auth.js';
 
 const BASE_ID = process.env.AIRTABLE_BASE_ID ?? 'appYjCP9BUY8Zj5Ni';
+
+/** Statuts de suivi : lecture publique, écriture réservée aux admins. */
+const STATUSES_TABLE = 'tblipMIYgKRdFOI3y';
 
 /** Tables que ce proxy accepte de servir. Toute autre table est refusée. */
 const ALLOWED_TABLES = new Set([
@@ -36,6 +39,7 @@ const ALLOWED_TABLES = new Set([
   'tblg8uig0z4oPUC1x', // Leads Solaires
   'tblySHLLDvHjk2ktK', // RH
   'tblw11IuaIggSkNu5', // Sectorisation commerciale
+  STATUSES_TABLE,
 ]);
 
 /**
@@ -166,7 +170,13 @@ export async function GET(req: Request): Promise<Response> {
  * d'un utilisateur : il n'est pas concerné.
  */
 async function guardedProxy(req: Request): Promise<Response> {
-  const check = await requireWriter(req);
+  const table = new URL(req.url).searchParams.get('table');
+  if (table === STATUSES_TABLE && req.method === 'DELETE') {
+    // Un statut s'archive, il ne se supprime pas : des demandes y sont liées,
+    // et supprimer la ligne viderait leur statut sans laisser de trace.
+    return json({ error: { message: 'Un statut s’archive, il ne se supprime pas.' } }, 405);
+  }
+  const check = await (table === STATUSES_TABLE ? requireAdmin : requireWriter)(req);
   if (!check.ok) {
     return json(
       { error: { message: check.message, type: 'AUTH_REQUIRED' }, googleAuth: true },

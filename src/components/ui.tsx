@@ -31,9 +31,8 @@ import {
 } from 'react';
 import {
   PRIORITY_TONE,
-  STATUS_TONE,
   type Priority,
-  type Status,
+  type StatusDef,
   type Tone,
 } from '../lib/schema';
 import type { DuplicateNote } from '../lib/leadActions';
@@ -48,11 +47,11 @@ export function StatusBadge({
   status,
   compact = false,
 }: {
-  status: Status;
+  status: StatusDef;
   /** Version resserrée, pour une ligne de liste dense. */
   compact?: boolean;
 }) {
-  const tone = STATUS_TONE[status] ?? 'neutral';
+  const tone = status.tone;
   const Icon = TONE_ICON[tone];
   return (
     <span
@@ -65,7 +64,13 @@ export function StatusBadge({
         strokeWidth={2}
         aria-hidden="true"
       />
-      <span className="truncate">{status}</span>
+      <span className="truncate">{status.name}</span>
+      {/* Un statut retiré des menus par un admin reste affiché sur les demandes
+          qui le portent ; la mention dit pourquoi on ne le retrouve plus à la
+          saisie. Pas pour un libellé hérité inconnu, qui n'a jamais été proposé. */}
+      {status.archived && !status.unknown && (
+        <span className="shrink-0 font-normal opacity-80">· archivé</span>
+      )}
     </span>
   );
 }

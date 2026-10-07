@@ -143,6 +143,7 @@ export async function GET(req: Request): Promise<Response> {
         email: session.email,
         name: staff.name || session.name,
         canWrite: staff.allowed,
+        isAdmin: staff.admin,
         expiresAt: session.exp,
       },
       200,
@@ -223,6 +224,7 @@ export async function GET(req: Request): Promise<Response> {
         email: identity.email,
         name: staff.name || identity.name,
         canWrite: staff.allowed,
+        isAdmin: staff.admin,
       },
       new URL(req.url).origin,
     );
@@ -242,6 +244,7 @@ export async function GET(req: Request): Promise<Response> {
     email: identity.email,
     name: staff.name || identity.name,
     canWrite: staff.allowed ? '1' : '0',
+    isAdmin: staff.admin ? '1' : '0',
   });
   back.hash = `admin-auth=${encodeURIComponent(fragment.toString())}`;
   return new Response(null, {

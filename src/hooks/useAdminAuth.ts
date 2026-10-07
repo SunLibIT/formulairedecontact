@@ -23,6 +23,12 @@ export interface AdminAuth {
   session: AdminSession | null;
   /** Vrai si l'application peut écrire dans l'état actuel. */
   canWrite: boolean;
+  /**
+   * Vrai pour un admin connecté (groupes RH Direction, Administratif) : gère
+   * les statuts. Jamais vrai en régime historique — sans identité prouvée,
+   * personne n'est admin, et le serveur refuserait de toute façon.
+   */
+  isAdmin: boolean;
   busy: boolean;
   signIn: () => Promise<void>;
   signOut: () => void;
@@ -68,6 +74,7 @@ export function useAdminAuth(): AdminAuth {
     session,
     // Régime historique : on écrit comme avant, sans session.
     canWrite: required ? Boolean(session?.canWrite) : true,
+    isAdmin: required && Boolean(session?.canWrite && session.isAdmin),
     busy,
     signIn: doSignIn,
     signOut,

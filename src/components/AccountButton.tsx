@@ -14,17 +14,20 @@
  * famille, jamais un dégradé — celui-ci est réservé à l'action principale, et
  * le cercle aux personnes.
  */
-import { ChevronDown, Lock, LogOut, Map, ShieldCheck, ShieldX } from 'lucide-react';
+import { ChevronDown, Lock, LogOut, Map, Settings2, ShieldCheck, ShieldX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AdminAuth } from '../hooks/useAdminAuth';
 
 export function AccountButton({
   auth,
   onOpenSectors,
+  onOpenStatuses,
 }: {
   auth: AdminAuth;
   /** Ouvre la sectorisation. Absent, l'entrée de menu ne s'affiche pas. */
   onOpenSectors?: () => void;
+  /** Ouvre la gestion des statuts. Proposée aux seuls admins. */
+  onOpenStatuses?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
@@ -148,6 +151,21 @@ export function AccountButton({
             >
               <Map className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
               <span className="flex-1">Sectorisation commerciale</span>
+            </button>
+          )}
+
+          {auth.isAdmin && onOpenStatuses && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onOpenStatuses();
+              }}
+              className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-sm font-medium text-ink transition-colors hover:bg-canvas"
+            >
+              <Settings2 className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+              <span className="flex-1">Gérer les statuts</span>
             </button>
           )}
 

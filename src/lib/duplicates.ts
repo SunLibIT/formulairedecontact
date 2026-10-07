@@ -17,6 +17,7 @@
  */
 import { normaliseEmail } from './marketingExport';
 import type { Lead } from './records';
+import { isArchivedStatus } from './statuses';
 
 /** Ce qu'on sait d'une ligne appartenant à un groupe de doublons. */
 export interface DuplicateMark {
@@ -58,7 +59,7 @@ export function buildDuplicateIndex(leads: Lead[]): DuplicateIndex {
     // Une demande archivée n'est plus un doublon à traiter : c'est le résultat
     // du traitement. Sans cette exclusion, le compteur du filtre ne baisserait
     // jamais après une fusion et le travail accompli resterait invisible.
-    if (lead.status === 'Archivé') continue;
+    if (isArchivedStatus(lead.status)) continue;
     const email = normaliseEmail(lead.email);
     if (!email) continue;
     const group = groups.get(email);

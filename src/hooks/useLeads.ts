@@ -18,11 +18,18 @@ import {
   toSolarLead,
   toStaffMember,
   toTerritory,
+  withStatuses,
   type Lead,
   type StaffMember,
   type Territory,
 } from '../lib/records';
-import { CONTACT, LEAD, STAFF, TABLES, TERRITORY } from '../lib/schema';
+import { CONTACT, LEAD, STAFF, STATUS, TABLES, TERRITORY, type StatusDef } from '../lib/schema';
+import {
+  DEFAULT_REGISTRY,
+  buildRegistry,
+  toStatusDef,
+  type StatusRegistry,
+} from '../lib/statuses';
 import { buildSectorIndex, coverageByStaff } from '../lib/territories';
 
 /** Une heure : les demandes arrivent au compte-gouttes, inutile de marteler l'API. */
@@ -35,14 +42,14 @@ const CONTACT_FIELDS = [
   CONTACT.company, CONTACT.requesterType, CONTACT.motive, CONTACT.message,
   CONTACT.address, CONTACT.addressLine2, CONTACT.city, CONTACT.postalCode,
   CONTACT.department, CONTACT.region, CONTACT.country,
-  CONTACT.status, CONTACT.priority, CONTACT.partner, CONTACT.assignee,
+  CONTACT.statusLink, CONTACT.statusLegacy, CONTACT.priority, CONTACT.partner, CONTACT.assignee,
   CONTACT.notes, CONTACT.gdprConsent,
 ] as const;
 
 const LEAD_FIELDS = [
   LEAD.firstName, LEAD.lastName, LEAD.email, LEAD.phone, LEAD.customerType,
   LEAD.address, LEAD.city, LEAD.postalCode, LEAD.createdOn,
-  LEAD.status, LEAD.priority, LEAD.partner, LEAD.assignee, LEAD.assigneeText,
+  LEAD.statusLink, LEAD.statusLegacy, LEAD.priority, LEAD.partner, LEAD.assignee, LEAD.assigneeText,
   LEAD.notes, LEAD.annualConsumption, LEAD.monthlyBill, LEAD.recommendedPower,
   LEAD.gdprConsent,
 ] as const;
@@ -162,6 +169,61 @@ export function useTerritories() {
   return { territories, sectors, coverage, loading, error, refresh };
 }
 
+/* ----------------------------------------------------------------- statuts */
+
+let statusesCache: Promise<StatusDef[]> | null = null;
+
+function loadStatuses(): Promise<StatusDef[]> {
+  statusesCache ??= listRecords(TABLES.statuses, {
+    fieldIds: [STATUS.name, STATUS.tone, STATUS.order, STATUS.archived, STATUS.role],
+  })
+    .then((records) => records.map(toStatusDef).filter((s) => s.name))
+    .catch((err) => {
+      statusesCache = null;
+      throw err;
+    });
+  return statusesCache;
+}
+
+/**
+ * Table Statuts, mise en cache comme la sectorisation.
+ *
+ * Tant qu'elle n'est pas arrivée — ou si elle ne se charge pas — l'app tourne
+ * sur `DEFAULT_REGISTRY`, les sept statuts d'origine : un échec dégrade la
+ * gestion des statuts, jamais l'affichage des demandes. `error` le dit à la
+ * fenêtre d'administration, qui est le seul endroit où cela change quelque
+ * chose.
+ *
+ * `replace` applique un changement fait par la fenêtre d'administration sans
+ * relire la table : l'écriture Airtable a renvoyé la ligne, elle fait foi.
+ */
+export function useStatuses() {
+  const [defs, setDefs] = useState<StatusDef[] | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    loadStatuses()
+      .then((d) => alive && setDefs(d))
+      .catch((e: Error) => alive && setError(e.message));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const registry: StatusRegistry = useMemo(
+    () => (defs && defs.length ? buildRegistry(defs) : DEFAULT_REGISTRY),
+    [defs],
+  );
+
+  const replace = useCallback((next: StatusDef[]) => {
+    statusesCache = Promise.resolve(next);
+    setDefs(next);
+  }, []);
+
+  return { registry, loaded: defs !== null, error, replace };
+}
+
 /* ------------------------------------------------------------------- leads */
 
 export type LeadTable = 'contact' | 'solar';
@@ -179,6 +241,7 @@ interface UseLeadsResult {
 export function useLeads(
   table: LeadTable,
   staffById: Map<string, string>,
+  statuses: StatusRegistry,
 ): UseLeadsResult {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,11 +253,18 @@ export function useLeads(
   // La correspondance RH arrive après les enregistrements ; on garde les
   // enregistrements bruts pour pouvoir re-normaliser sans rappeler l'API.
   const raw = useRef<Awaited<ReturnType<typeof listRecords>>>([]);
+  // Lu par `normalise` sans en être une dépendance : un changement de statuts
+  // passe par `withStatuses` (plus bas), pas par une re-normalisation qui
+  // effacerait les modifications locales en attente du prochain chargement.
+  const statusesRef = useRef(statuses);
+  statusesRef.current = statuses;
 
   const normalise = useCallback(
     (records: typeof raw.current) =>
       records.map((r) =>
-        table === 'contact' ? toContactLead(r, staffById) : toSolarLead(r, staffById),
+        table === 'contact'
+          ? toContactLead(r, staffById, statusesRef.current)
+          : toSolarLead(r, staffById, statusesRef.current),
       ),
     [table, staffById],
   );
@@ -235,6 +305,12 @@ export function useLeads(
   useEffect(() => {
     if (raw.current.length) setLeads(normalise(raw.current));
   }, [normalise]);
+
+  // Un statut renommé, recoloré ou réordonné se voit immédiatement sur toutes
+  // les demandes qui le portent : le lien n'a pas bougé, sa cible si.
+  useEffect(() => {
+    setLeads((prev) => (prev.length ? withStatuses(prev, statuses) : prev));
+  }, [statuses]);
 
   const patchLocal = useCallback((id: string, patch: Partial<Lead>) => {
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));

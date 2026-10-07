@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NO_LINK, parseDeepLink, planDeepLink } from './deepLink';
 import type { Lead } from './records';
+import { legacyStatus as st } from './statuses';
 
 /** Fabrique un lead minimal, seuls les champs testés sont renseignés. */
 function lead(over: Partial<Lead> & { id: string }): Lead {
@@ -26,7 +27,9 @@ function lead(over: Partial<Lead> & { id: string }): Lead {
       region: '',
       country: '',
     },
-    status: 'Nouveau',
+    status: st('Nouveau'),
+    statusLinkId: null,
+    statusLegacy: '',
     priority: 'Moyenne',
     partner: '',
     assigneeIds: [],

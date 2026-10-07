@@ -256,7 +256,7 @@ export const MARKETING_COLUMNS: readonly Column[] = [
   { header: 'Demandes', value: (_l, ctx) => String(ctx.requests) },
 
   // — Suivi commercial, pour exclure ou prioriser une cible
-  { header: 'Statut', value: (l) => l.status },
+  { header: 'Statut', value: (l) => l.status.name },
   { header: 'Priorité', value: (l) => l.priority },
   { header: 'Partenaire', value: (l) => l.partner.trim() },
   { header: 'Assigné à', value: (l) => l.assigneeNames.join(', ') },

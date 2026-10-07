@@ -12,12 +12,8 @@
 import { AlertTriangle, Check, Loader2, Merge, X } from 'lucide-react';
 import { useState } from 'react';
 import type { StaffMember } from '../lib/records';
-import {
-  PRIORITIES,
-  SELECTABLE_STATUSES,
-  type Priority,
-  type Status,
-} from '../lib/schema';
+import { PRIORITIES, type Priority } from '../lib/schema';
+import { selectableStatuses, type StatusDef, type StatusRegistry } from '../lib/statuses';
 import {
   staffGroups,
   staffOptionsFor,
@@ -28,7 +24,7 @@ import { SearchableSelect } from './SearchableSelect';
 import { SecondaryButton } from './ui';
 
 export interface BulkPatch {
-  status?: Status;
+  status?: StatusDef;
   priority?: Priority;
   assigneeId?: string | null;
 }
@@ -42,6 +38,7 @@ export interface BulkOutcome {
 export function BulkActionBar({
   count,
   staff,
+  statuses,
   sector,
   coverage,
   onApply,
@@ -50,6 +47,7 @@ export function BulkActionBar({
 }: {
   count: number;
   staff: StaffMember[];
+  statuses: StatusRegistry;
   /**
    * Secteur commun à toute la sélection, s'il y en a un.
    *
@@ -150,13 +148,14 @@ export function BulkActionBar({
               className="field w-auto"
               value=""
               onChange={(e) => {
-                if (e.target.value) void apply({ status: e.target.value as Status });
+                const status = statuses.byId.get(e.target.value);
+                if (status) void apply({ status });
               }}
             >
               <option value="">—</option>
-              {SELECTABLE_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
+              {selectableStatuses(statuses).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
                 </option>
               ))}
             </select>

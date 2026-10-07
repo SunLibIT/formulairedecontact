@@ -6,7 +6,8 @@
 import { dayIso, dayNumber } from './dates';
 import { ageInDays } from './format';
 import type { Lead } from './records';
-import { PRIORITIES, STATUSES, type Priority, type Status } from './schema';
+import { PRIORITIES, type Priority } from './schema';
+import { countOfRole, tallyStatus, type StatusCounts } from './statuses';
 
 /**
  * Seuil d'alerte sur une demande non traitée, en jours.
@@ -135,17 +136,14 @@ export function byMonth(leads: Lead[]): MonthPoint[] {
 export interface AssigneeLoad {
   name: string;
   total: number;
-  byStatus: Record<Status, number>;
-  /** Demandes encore au statut « Nouveau », donc non traitées. */
+  byStatus: StatusCounts;
+  /** Demandes encore au statut de rôle « nouveau », donc non traitées. */
   untouched: number;
 }
 
 /** Charge par collaborateur, non assignés compris, du plus chargé au moins. */
 export function perAssignee(leads: Lead[]): AssigneeLoad[] {
   const rows = new Map<string, AssigneeLoad>();
-
-  const blank = (): Record<Status, number> =>
-    Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
 
   for (const lead of leads) {
     // Une demande partagée compte pour chacun : la charge est ce que chacun
@@ -154,12 +152,12 @@ export function perAssignee(leads: Lead[]): AssigneeLoad[] {
     for (const name of names) {
       let row = rows.get(name);
       if (!row) {
-        row = { name, total: 0, byStatus: blank(), untouched: 0 };
+        row = { name, total: 0, byStatus: new Map(), untouched: 0 };
         rows.set(name, row);
       }
       row.total++;
-      if (lead.status in row.byStatus) row.byStatus[lead.status]++;
-      if (lead.status === 'Nouveau') row.untouched++;
+      tallyStatus(row.byStatus, lead.status);
+      if (lead.status.role === 'nouveau') row.untouched++;
     }
   }
 
@@ -170,7 +168,8 @@ export function perAssignee(leads: Lead[]): AssigneeLoad[] {
 
 export interface Summary {
   total: number;
-  byStatus: Record<Status, number>;
+  /** Par identifiant de statut, statuts inconnus exclus (voir `unknownStatus`). */
+  byStatus: StatusCounts;
   byPriority: Record<Priority, number>;
   unassigned: number;
   /** Encore au statut « Nouveau ». */
@@ -217,7 +216,7 @@ function median(values: number[]): number | null {
 }
 
 export function summarise(leads: Lead[], now = Date.now()): Summary {
-  const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
+  const byStatus: StatusCounts = new Map();
   const byPriority = Object.fromEntries(PRIORITIES.map((p) => [p, 0])) as Record<
     Priority,
     number
@@ -228,12 +227,12 @@ export function summarise(leads: Lead[], now = Date.now()): Summary {
   let staleCount = 0;
 
   for (const lead of leads) {
-    if (lead.status in byStatus) byStatus[lead.status]++;
-    else unknownStatus++;
+    if (lead.status.unknown) unknownStatus++;
+    else tallyStatus(byStatus, lead.status);
     if (lead.priority in byPriority) byPriority[lead.priority]++;
     if (!lead.assigneeIds.length && !lead.assigneeNames.length) unassigned++;
 
-    if (lead.status === 'Nouveau') {
+    if (lead.status.role === 'nouveau') {
       const age = ageInDays(lead.date, now);
       if (age != null) {
         untouchedAges.push(age);
@@ -242,14 +241,17 @@ export function summarise(leads: Lead[], now = Date.now()): Summary {
     }
   }
 
-  const qualified = byStatus['Qualifié'];
-  const signed = byStatus['Signé'];
-  const rejected = byStatus['Hors Critères'];
+  // Par rôle et non par nom : un statut renommé garde sa place dans les taux.
+  // Un statut créé depuis l'app, sans rôle, ne compte ni comme retenu ni
+  // comme écarté — il n'est pas une décision que l'indicateur sait lire.
+  const qualified = countOfRole(byStatus, 'qualifie');
+  const signed = countOfRole(byStatus, 'signe');
+  const rejected = countOfRole(byStatus, 'hors_criteres');
   // Une signature ne sort pas une demande du décompte des retenues : elle la
   // fait avancer. Sans ce `+ signed`, signer ferait baisser le taux.
   const kept = qualified + signed;
   const decided = kept + rejected;
-  const untouched = byStatus['Nouveau'];
+  const untouched = countOfRole(byStatus, 'nouveau');
   // Base du taux de traitement : les demandes dont on sait lire le statut. Un
   // statut inconnu n'est pas « traité », il est illisible — le compter comme
   // traité gonflerait le taux à chaque import douteux.

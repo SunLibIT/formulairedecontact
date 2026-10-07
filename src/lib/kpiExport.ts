@@ -29,7 +29,8 @@ import {
   type Distribution,
 } from './kpi';
 import type { Lead } from './records';
-import { PRIORITIES, STATUSES } from './schema';
+import { PRIORITIES } from './schema';
+import { DEFAULT_REGISTRY, byOrder, countOf, type StatusDef } from './statuses';
 
 /** Ce que le panneau KPI a sous les yeux, pour que le fichier le rappelle. */
 export interface KpiScope {
@@ -89,6 +90,8 @@ export function buildKpiExport(
   leads: Lead[],
   scope: KpiScope,
   now: number = Date.now(),
+  /** Statuts de la table Statuts, archivés compris. */
+  statuses: readonly StatusDef[] = DEFAULT_REGISTRY.list,
 ): Table {
   const summary = summarise(leads, now);
   const rows: Row[] = [];
@@ -156,8 +159,14 @@ export function buildKpiExport(
   rows.push(['Synthèse', 'Statut non reconnu', frNumber(summary.unknownStatus), '']);
 
   /* -------------------------------------------------------------- statuts */
-  for (const status of STATUSES) {
-    rows.push(countRow('Statut', status, summary.byStatus[status], summary.total));
+  // Tout statut proposé à la saisie a sa ligne, même à zéro : une ligne
+  // absente se lit « oubliée ». Un statut archivé n'en a une que s'il porte
+  // encore des demandes de la période — sinon il n'a rien à dire.
+  const listed = new Map<string, StatusDef>();
+  for (const s of statuses) if (!s.archived || summary.byStatus.has(s.id)) listed.set(s.id, s);
+  for (const { status } of summary.byStatus.values()) if (!listed.has(status.id)) listed.set(status.id, status);
+  for (const status of [...listed.values()].sort(byOrder)) {
+    rows.push(countRow('Statut', status.name, countOf(summary.byStatus, status.id), summary.total));
   }
 
   for (const priority of PRIORITIES) {

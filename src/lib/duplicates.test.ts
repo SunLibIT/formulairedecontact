@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDuplicateIndex, groupByAddress, keepDuplicates } from './duplicates';
 import { duplicateNote } from './leadActions';
 import type { Lead } from './records';
+import { legacyStatus as st } from './statuses';
 
 function lead(patch: Partial<Lead> & { id: string }): Lead {
   return {
@@ -26,7 +27,9 @@ function lead(patch: Partial<Lead> & { id: string }): Lead {
       region: '',
       country: '',
     },
-    status: 'Nouveau',
+    status: st('Nouveau'),
+    statusLinkId: null,
+    statusLegacy: '',
     priority: 'Moyenne',
     partner: '',
     assigneeIds: [],
@@ -90,7 +93,7 @@ describe('buildDuplicateIndex', () => {
     // figerait le compteur du filtre et masquerait le travail accompli.
     const index = buildDuplicateIndex([
       lead({ id: 'gardee', email: 'a@b.fr' }),
-      lead({ id: 'fusionnee', email: 'a@b.fr', status: 'Archivé' }),
+      lead({ id: 'fusionnee', email: 'a@b.fr', status: st('Archivé') }),
     ]);
     expect(index.addresses).toBe(0);
     expect(index.marks.size).toBe(0);
@@ -100,7 +103,7 @@ describe('buildDuplicateIndex', () => {
     const index = buildDuplicateIndex([
       lead({ id: 'a', email: 'a@b.fr' }),
       lead({ id: 'b', email: 'a@b.fr' }),
-      lead({ id: 'vieille', email: 'a@b.fr', status: 'Archivé' }),
+      lead({ id: 'vieille', email: 'a@b.fr', status: st('Archivé') }),
     ]);
     expect(index.addresses).toBe(1);
     expect(index.marks.get('a')?.count).toBe(2);

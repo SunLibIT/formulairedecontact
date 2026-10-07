@@ -22,6 +22,7 @@ import {
   withTail,
 } from './kpi';
 import type { Lead } from './records';
+import { legacyStatus as st } from './statuses';
 
 /** Fabrique un lead minimal, seuls les champs testés sont renseignés. */
 function lead(over: Partial<Lead> & { id: string }): Lead {
@@ -47,7 +48,9 @@ function lead(over: Partial<Lead> & { id: string }): Lead {
       region: '',
       country: '',
     },
-    status: 'Nouveau',
+    status: st('Nouveau'),
+    statusLinkId: null,
+    statusLegacy: '',
     priority: 'Moyenne',
     partner: '',
     assigneeIds: [],
@@ -230,19 +233,19 @@ describe('summarise', () => {
     new Date(now - n * 86_400_000).toISOString();
 
   it('laisse le taux de qualification à null tant que rien n’est tranché', () => {
-    const s = summarise([lead({ id: 'a' }), lead({ id: 'b', status: 'A contacter' })], now);
+    const s = summarise([lead({ id: 'a' }), lead({ id: 'b', status: st('A contacter') })], now);
     expect(s.qualificationRate).toBeNull();
   });
 
   it('calcule la qualification sur les seules demandes tranchées', () => {
     const s = summarise(
       [
-        lead({ id: 'a', status: 'Qualifié' }),
-        lead({ id: 'b', status: 'Qualifié' }),
-        lead({ id: 'c', status: 'Hors Critères' }),
+        lead({ id: 'a', status: st('Qualifié') }),
+        lead({ id: 'b', status: st('Qualifié') }),
+        lead({ id: 'c', status: st('Hors Critères') }),
         // Non tranchées : elles ne doivent pas faire baisser le taux.
-        lead({ id: 'd', status: 'Nouveau' }),
-        lead({ id: 'e', status: 'A relancer' }),
+        lead({ id: 'd', status: st('Nouveau') }),
+        lead({ id: 'e', status: st('A relancer') }),
       ],
       now,
     );
@@ -255,9 +258,9 @@ describe('summarise', () => {
     // qualification à chaque signature.
     const s = summarise(
       [
-        lead({ id: 'a', status: 'Qualifié' }),
-        lead({ id: 'b', status: 'Signé' }),
-        lead({ id: 'c', status: 'Hors Critères' }),
+        lead({ id: 'a', status: st('Qualifié') }),
+        lead({ id: 'b', status: st('Signé') }),
+        lead({ id: 'c', status: st('Hors Critères') }),
       ],
       now,
     );
@@ -269,16 +272,16 @@ describe('summarise', () => {
   it('isole un statut hors référentiel au lieu de l’absorber', () => {
     const s = summarise(
       [
-        lead({ id: 'a', status: 'Nouveau' }),
-        lead({ id: 'b', status: 'Qualifié' }),
-        lead({ id: 'c', status: '2026-03-01 14:22' as Lead['status'] }),
+        lead({ id: 'a', status: st('Nouveau') }),
+        lead({ id: 'b', status: st('Qualifié') }),
+        lead({ id: 'c', status: st('2026-03-01 14:22') }),
       ],
       now,
     );
     expect(s.total).toBe(3);
     expect(s.unknownStatus).toBe(1);
     // Le compte des barres est cohérent avec ce qui reste lisible.
-    const barred = Object.values(s.byStatus).reduce((x, y) => x + y, 0);
+    const barred = [...s.byStatus.values()].reduce((x, y) => x + y.count, 0);
     expect(barred).toBe(s.total - s.unknownStatus);
     // Une demande illisible n'est pas une demande traitée : 1 sur 2, pas 2 sur 3.
     expect(s.handledRate).toBeCloseTo(1 / 2);
@@ -315,7 +318,7 @@ describe('summarise', () => {
     const s = summarise(
       [
         lead({ id: 'a', date: daysBefore(40) }),
-        lead({ id: 'b', status: 'Qualifié', date: daysBefore(400) }),
+        lead({ id: 'b', status: st('Qualifié'), date: daysBefore(400) }),
       ],
       now,
     );
@@ -374,7 +377,7 @@ describe('perAssignee', () => {
       lead({ id: 'a', assigneeIds: ['1'], assigneeNames: ['Ada'] }),
       lead({
         id: 'b',
-        status: 'A contacter',
+        status: st('A contacter'),
         assigneeIds: ['1'],
         assigneeNames: ['Ada'],
       }),

@@ -7,15 +7,17 @@
  * affiché, et les compteurs cherchaient des libellés absents de la table).
  */
 import type { Lead } from './records';
-import { PRIORITIES, STATUSES, type Priority, type Status } from './schema';
+import { PRIORITIES, type Priority } from './schema';
+import { isArchivedStatus, tallyStatus, type StatusCounts } from './statuses';
 
-export type { Priority, Status };
+export type { Priority };
 
 export const ALL = 'all' as const;
 
 export interface FilterState {
   search: string;
-  status: Status | typeof ALL;
+  /** Identifiant de statut (table Statuts), jamais son nom — qui peut changer. */
+  status: string | typeof ALL;
   priority: Priority | typeof ALL;
   category: string | typeof ALL;
   /** Identifiant d'enregistrement RH, ou `unassigned` pour les non assignés. */
@@ -119,11 +121,6 @@ export const DEFAULT_SORT: SortState = { field: 'date', direction: 'desc' };
 /** Urgence décroissante — l'ordre alphabétique n'aurait aucun sens ici. */
 const PRIORITY_RANK: Record<Priority, number> = { Haute: 0, Moyenne: 1, Basse: 2 };
 
-/** Ordre du pipeline, pas alphabétique : « Nouveau » précède « Qualifié ». */
-const STATUS_RANK: Record<Status, number> = Object.fromEntries(
-  STATUSES.map((s, i) => [s, i]),
-) as Record<Status, number>;
-
 /**
  * Trie une liste déjà filtrée.
  *
@@ -143,7 +140,9 @@ export function sortLeads(leads: Lead[], sort: SortState): Lead[] {
       case 'priority':
         return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
       case 'status':
-        return STATUS_RANK[a.status] - STATUS_RANK[b.status];
+        // Ordre du pipeline (`Ordre` dans la table Statuts), pas alphabétique :
+        // « Nouveau » précède « Qualifié ».
+        return a.status.order - b.status.order;
       case 'name':
         return collator.compare(a.fullName, b.fullName);
       case 'assignee': {
@@ -185,10 +184,10 @@ export function applyFilters(leads: Lead[], f: FilterState): Lead[] {
     // demande, par le filtre de statut, qui reste le chemin vers l'archive.
     // Rien n'est supprimé en base : c'est bien un masquage, réversible en
     // rendant son statut à la ligne.
-    if (lead.status === 'Archivé' && f.status !== 'Archivé') return false;
+    if (isArchivedStatus(lead.status) && f.status !== lead.status.id) return false;
 
     if (query && !matchesSearch(lead, query)) return false;
-    if (f.status !== ALL && lead.status !== f.status) return false;
+    if (f.status !== ALL && lead.status.id !== f.status) return false;
     if (f.priority !== ALL && lead.priority !== f.priority) return false;
     if (f.category !== ALL && lead.category !== f.category) return false;
     if (f.partner !== ALL && lead.partner.trim() !== f.partner.trim()) return false;
@@ -209,7 +208,8 @@ export function applyFilters(leads: Lead[], f: FilterState): Lead[] {
 
 export interface Stats {
   total: number;
-  byStatus: Record<Status, number>;
+  /** Par identifiant de statut. Seuls les statuts présents y figurent. */
+  byStatus: StatusCounts;
   byPriority: Record<Priority, number>;
   unassigned: number;
 }
@@ -217,21 +217,21 @@ export interface Stats {
 /**
  * Compteurs sur l'ensemble restreint à la période.
  *
- * Les demandes **archivées** comptent dans `byStatus.Archivé` et nulle part
+ * Les demandes **archivées** comptent dans `byStatus`, sous leur statut, et nulle part
  * ailleurs : pas dans le total, pas dans les priorités, pas dans les non
  * assignées. Sans cela, « Toutes (440) » annoncerait un nombre que la liste,
  * qui les masque, ne montrerait jamais. Le compteur d'« Archivé » survit,
  * lui, parce que c'est par lui qu'on retourne les voir.
  */
 export function computeStats(leads: Lead[]): Stats {
-  const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
+  const byStatus: StatusCounts = new Map();
   const byPriority = Object.fromEntries(PRIORITIES.map((p) => [p, 0])) as Record<Priority, number>;
   let unassigned = 0;
   let total = 0;
 
   for (const lead of leads) {
-    if (lead.status in byStatus) byStatus[lead.status]++;
-    if (lead.status === 'Archivé') continue;
+    tallyStatus(byStatus, lead.status);
+    if (isArchivedStatus(lead.status)) continue;
 
     total++;
     if (lead.priority in byPriority) byPriority[lead.priority]++;

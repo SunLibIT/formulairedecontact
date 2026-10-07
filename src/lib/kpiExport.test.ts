@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { toCsv } from './csv';
 import { buildKpiExport, kpiExportFilename } from './kpiExport';
 import type { Lead } from './records';
-import type { Priority, Status } from './schema';
+import type { Priority } from './schema';
+import { legacyStatus as st } from './statuses';
 
 function lead(patch: Partial<Lead> = {}): Lead {
   return {
@@ -28,7 +29,9 @@ function lead(patch: Partial<Lead> = {}): Lead {
       region: '',
       country: 'France',
     },
-    status: 'Nouveau',
+    status: st('Nouveau'),
+    statusLinkId: null,
+    statusLegacy: '',
     priority: 'Moyenne',
     partner: '',
     assigneeIds: [],
@@ -75,10 +78,10 @@ describe('buildKpiExport', () => {
 
   it('compte les statuts et leur part du total', () => {
     const leads = [
-      lead({ id: 'a', status: 'Nouveau' }),
-      lead({ id: 'b', status: 'Qualifié' }),
-      lead({ id: 'c', status: 'Qualifié' }),
-      lead({ id: 'd', status: 'Hors Critères' }),
+      lead({ id: 'a', status: st('Nouveau') }),
+      lead({ id: 'b', status: st('Qualifié') }),
+      lead({ id: 'c', status: st('Qualifié') }),
+      lead({ id: 'd', status: st('Hors Critères') }),
     ];
     const { rows } = buildKpiExport(leads, SCOPE, NOW);
 
@@ -95,10 +98,10 @@ describe('buildKpiExport', () => {
   it('calcule le taux de qualification sur les demandes tranchées', () => {
     // 2 qualifiées, 1 hors critères, 1 encore nouvelle : 2/3 et non 2/4.
     const leads = [
-      lead({ id: 'a', status: 'Nouveau' }),
-      lead({ id: 'b', status: 'Qualifié' }),
-      lead({ id: 'c', status: 'Qualifié' }),
-      lead({ id: 'd', status: 'Hors Critères' }),
+      lead({ id: 'a', status: st('Nouveau') }),
+      lead({ id: 'b', status: st('Qualifié') }),
+      lead({ id: 'c', status: st('Qualifié') }),
+      lead({ id: 'd', status: st('Hors Critères') }),
     ];
     const { rows } = buildKpiExport(leads, SCOPE, NOW);
     expect(cell(rows, 'Synthèse', RATE_LABEL)?.part).toBe('66,7');
@@ -109,10 +112,10 @@ describe('buildKpiExport', () => {
     // avancé, elle n'a pas été refusée. Sans cela, chaque signature ferait
     // baisser l'indicateur — il dirait l'inverse de ce qui se passe.
     const leads = [
-      lead({ id: 'a', status: 'Nouveau' }),
-      lead({ id: 'b', status: 'Qualifié' }),
-      lead({ id: 'c', status: 'Signé' }),
-      lead({ id: 'd', status: 'Hors Critères' }),
+      lead({ id: 'a', status: st('Nouveau') }),
+      lead({ id: 'b', status: st('Qualifié') }),
+      lead({ id: 'c', status: st('Signé') }),
+      lead({ id: 'd', status: st('Hors Critères') }),
     ];
     const { rows } = buildKpiExport(leads, SCOPE, NOW);
     expect(cell(rows, 'Synthèse', RATE_LABEL)?.part).toBe('66,7');
@@ -163,8 +166,8 @@ describe('buildKpiExport', () => {
   it('ventile la charge par collaborateur', () => {
     const { rows } = buildKpiExport(
       [
-        lead({ id: 'a', assigneeIds: ['u1'], assigneeNames: ['Marie'], status: 'Nouveau' }),
-        lead({ id: 'b', assigneeIds: ['u1'], assigneeNames: ['Marie'], status: 'Qualifié' }),
+        lead({ id: 'a', assigneeIds: ['u1'], assigneeNames: ['Marie'], status: st('Nouveau') }),
+        lead({ id: 'b', assigneeIds: ['u1'], assigneeNames: ['Marie'], status: st('Qualifié') }),
       ],
       SCOPE,
       NOW,
@@ -180,7 +183,7 @@ describe('buildKpiExport', () => {
     expect(cell(rows, 'Synthèse', 'Statut non reconnu')?.valeur).toBe('0');
 
     const bogus = buildKpiExport(
-      [lead({ status: 'En cours' as Status, priority: 'Urgente' as Priority })],
+      [lead({ status: st('En cours'), priority: 'Urgente' as Priority })],
       SCOPE,
       NOW,
     );
@@ -196,9 +199,9 @@ describe('buildKpiExport', () => {
 
   it('écrit les décimales à la française, sinon Excel lit du texte', () => {
     const leads = [
-      lead({ id: 'a', status: 'Qualifié' }),
-      lead({ id: 'b', status: 'Qualifié' }),
-      lead({ id: 'c', status: 'Hors Critères' }),
+      lead({ id: 'a', status: st('Qualifié') }),
+      lead({ id: 'b', status: st('Qualifié') }),
+      lead({ id: 'c', status: st('Hors Critères') }),
     ];
     const csv = toCsv(buildKpiExport(leads, SCOPE, NOW));
     expect(csv).toContain('66,7');

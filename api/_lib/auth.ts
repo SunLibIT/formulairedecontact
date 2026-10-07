@@ -134,6 +134,29 @@ export interface StaffLookup {
   allowed: boolean;
   /** Nom tel qu'il figure dans RH, pour l'afficher plutôt que l'email. */
   name: string;
+  /** Collaborateur actif d'un groupe admin — voir `ADMIN_GROUPS`. */
+  admin: boolean;
+}
+
+/**
+ * Groupes RH (« user group ») qui administrent l'app : gestion des statuts.
+ *
+ * Seul endroit où un groupe donne un droit. L'écriture courante reste ouverte
+ * à tout collaborateur actif (voir `lookupStaff`) ; seule la configuration
+ * partagée par tous — la liste des statuts — est réservée, parce qu'un
+ * renommage s'y voit sur chaque demande, pour chacun.
+ */
+export const ADMIN_GROUPS: readonly string[] = ['Direction', 'Administratif'];
+
+/** Le champ groupe peut être un select simple, multiple ou un texte. */
+function groupNames(v: unknown): string[] {
+  const one = (x: unknown): string =>
+    typeof x === 'string'
+      ? x
+      : x && typeof x === 'object' && 'name' in x
+        ? String((x as { name: unknown }).name ?? '')
+        : '';
+  return (Array.isArray(v) ? v.map(one) : [one(v)]).map((g) => g.trim()).filter(Boolean);
 }
 
 /**
@@ -150,7 +173,8 @@ export interface StaffLookup {
  */
 export async function lookupStaff(email: string): Promise<StaffLookup> {
   const normalised = email.trim().toLowerCase();
-  if (!normalised) return { allowed: false, name: '' };
+  const denied: StaffLookup = { allowed: false, name: '', admin: false };
+  if (!normalised) return denied;
 
   const baseId = process.env.AIRTABLE_BASE_ID ?? 'appYjCP9BUY8Zj5Ni';
   const params = new URLSearchParams({
@@ -164,19 +188,20 @@ export async function lookupStaff(email: string): Promise<StaffLookup> {
   const res = await fetch(`https://api.airtable.com/v0/${baseId}/${TABLES.staff}?${params}`, {
     headers: { Authorization: `Bearer ${process.env.AIRTABLE_TOKEN ?? ''}` },
   });
-  if (!res.ok) return { allowed: false, name: '' };
+  if (!res.ok) return denied;
 
   const body = (await res.json()) as {
     records?: Array<{ fields?: Record<string, unknown> }>;
   };
   const record = body.records?.[0];
-  if (!record) return { allowed: false, name: '' };
+  if (!record) return denied;
 
   const fields = record.fields ?? {};
   // Une case jamais cochée est absente de la réponse : son absence vaut actif.
   const inactive = fields[STAFF.inactive] === true;
   const rawName = fields[STAFF.name];
-  return { allowed: !inactive, name: typeof rawName === 'string' ? rawName : '' };
+  const admin = !inactive && groupNames(fields[STAFF.group]).some((g) => ADMIN_GROUPS.includes(g));
+  return { allowed: !inactive, name: typeof rawName === 'string' ? rawName : '', admin };
 }
 
 export type WriteCheck =
@@ -219,4 +244,34 @@ export async function requireWriter(req: Request): Promise<WriteCheck> {
   }
 
   return { ok: true, email: session.email, enforced: true };
+}
+
+/**
+ * La garde des écritures d'administration — aujourd'hui la table Statuts.
+ *
+ * Plus stricte que `requireWriter` sur un point : **le régime historique ne
+ * suffit pas**. Sans connexion Google, `requireWriter` laisse tout passer ;
+ * ici, une identité prouvée est exigée, sinon « réservé aux admins » ne
+ * voudrait rien dire.
+ */
+export async function requireAdmin(req: Request): Promise<WriteCheck> {
+  if (!googleAuthEnabled()) {
+    return {
+      ok: false,
+      status: 403,
+      message: 'La gestion des statuts exige la connexion Google, non configurée sur ce déploiement.',
+    };
+  }
+  const check = await requireWriter(req);
+  if (!check.ok) return check;
+
+  const staff = await lookupStaff(check.email);
+  if (!staff.admin) {
+    return {
+      ok: false,
+      status: 403,
+      message: `Gestion des statuts réservée aux groupes ${ADMIN_GROUPS.join(' et ')}.`,
+    };
+  }
+  return check;
 }

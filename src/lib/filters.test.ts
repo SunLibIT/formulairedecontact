@@ -8,6 +8,7 @@ import {
   sortLeads,
 } from './filters';
 import type { Lead } from './records';
+import { legacyStatus as st } from './statuses';
 
 /** Fabrique un lead minimal, seuls les champs testés sont renseignés. */
 function lead(over: Partial<Lead> & { id: string }): Lead {
@@ -33,7 +34,9 @@ function lead(over: Partial<Lead> & { id: string }): Lead {
       region: '',
       country: '',
     },
-    status: 'Nouveau',
+    status: st('Nouveau'),
+    statusLinkId: null,
+    statusLegacy: '',
     priority: 'Moyenne',
     partner: '',
     assigneeIds: [],
@@ -77,9 +80,9 @@ describe('sortLeads', () => {
 
   it('trie le statut dans l’ordre du pipeline', () => {
     const leads = [
-      lead({ id: 'qualifie', status: 'Qualifié' }),
-      lead({ id: 'nouveau', status: 'Nouveau' }),
-      lead({ id: 'contacter', status: 'A contacter' }),
+      lead({ id: 'qualifie', status: st('Qualifié') }),
+      lead({ id: 'nouveau', status: st('Nouveau') }),
+      lead({ id: 'contacter', status: st('A contacter') }),
     ];
     expect(
       sortLeads(leads, { field: 'status', direction: 'asc' }).map((l) => l.id),
@@ -149,15 +152,15 @@ describe('applyFilters', () => {
   it('masque les demandes archivées', () => {
     // C'est ce qui donne son effet à l'archivage d'un doublon : la ligne
     // disparaît de la file sans être supprimée en base.
-    const leads = [lead({ id: 'vivante' }), lead({ id: 'rangée', status: 'Archivé' })];
+    const leads = [lead({ id: 'vivante' }), lead({ id: 'rangée', status: st('Archivé') })];
     expect(applyFilters(leads, EMPTY_FILTERS).map((l) => l.id)).toEqual(['vivante']);
   });
 
   it('les montre quand on les demande par le statut', () => {
     // Sans ce chemin, une demande archivée par erreur serait irrécupérable
     // depuis l'interface.
-    const leads = [lead({ id: 'vivante' }), lead({ id: 'rangée', status: 'Archivé' })];
-    const found = applyFilters(leads, { ...EMPTY_FILTERS, status: 'Archivé' });
+    const leads = [lead({ id: 'vivante' }), lead({ id: 'rangée', status: st('Archivé') })];
+    const found = applyFilters(leads, { ...EMPTY_FILTERS, status: st('Archivé').id });
     expect(found.map((l) => l.id)).toEqual(['rangée']);
   });
 });
@@ -169,7 +172,7 @@ describe('computeStats', () => {
     const stats = computeStats([
       lead({ id: 'a' }),
       lead({ id: 'b', assigneeIds: ['r1'] }),
-      lead({ id: 'c', status: 'Archivé' }),
+      lead({ id: 'c', status: st('Archivé') }),
     ]);
     expect(stats.total).toBe(2);
     expect(stats.unassigned).toBe(1);
@@ -177,8 +180,8 @@ describe('computeStats', () => {
   });
 
   it('garde leur compteur de statut, seul chemin de retour vers elles', () => {
-    const stats = computeStats([lead({ id: 'c', status: 'Archivé' })]);
-    expect(stats.byStatus['Archivé']).toBe(1);
+    const stats = computeStats([lead({ id: 'c', status: st('Archivé') })]);
+    expect(stats.byStatus.get(st('Archivé').id)?.count).toBe(1);
     expect(stats.total).toBe(0);
   });
 });

@@ -31,6 +31,7 @@ import {
   MessageSquare,
   Phone,
   Save,
+  Settings2,
   Sun,
   User,
   X,
@@ -46,12 +47,15 @@ import { formatAddress, type Lead, type StaffMember } from '../lib/records';
 import {
   PRIORITIES,
   PRIORITY_TONE,
-  SELECTABLE_STATUSES,
-  STATUSES,
-  STATUS_TONE,
   type Priority,
-  type Status,
 } from '../lib/schema';
+import {
+  isLegacyId,
+  selectableStatuses,
+  statusForRole,
+  type StatusDef,
+  type StatusRegistry,
+} from '../lib/statuses';
 import {
   sectorForLead,
   staffGroups,
@@ -60,13 +64,16 @@ import {
   type SectorIndex,
 } from '../lib/territories';
 import { TONE_CLASS } from '../lib/tones';
-import { WRITE_TARGET } from '../lib/writeTargets';
+import { WRITE_TARGET, statusWrite } from '../lib/writeTargets';
 import { SearchableSelect } from './SearchableSelect';
 import { Callout, PriorityBadge, RelativeDate, SecondaryButton, StatusBadge } from './ui';
 
 interface Props {
   lead: Lead;
   staff: StaffMember[];
+  statuses: StatusRegistry;
+  /** Ouvre la gestion des statuts. Absent — non-admin — : pas de bouton. */
+  onManageStatuses?: () => void;
   /** Sectorisation commerciale. Vide tant qu'elle n'est pas chargée. */
   sectors: SectorIndex;
   /** Départements couverts par collaborateur. */
@@ -83,6 +90,8 @@ interface Props {
 export function LeadModal({
   lead,
   staff,
+  statuses,
+  onManageStatuses,
   sectors,
   coverage,
   duplicate,
@@ -90,7 +99,8 @@ export function LeadModal({
   onClose,
   onSaved,
 }: Props) {
-  const [status, setStatus] = useState<Status>(lead.status);
+  const [status, setStatus] = useState<StatusDef>(lead.status);
+  const statusId = useId();
   const [priority, setPriority] = useState<Priority>(lead.priority);
   const [partner, setPartner] = useState(lead.partner);
   const [assigneeId, setAssigneeId] = useState(lead.assigneeIds[0] ?? '');
@@ -107,7 +117,7 @@ export function LeadModal({
   const dialogRef = useDialog(onClose);
 
   const dirty =
-    status !== lead.status ||
+    status.id !== lead.status.id ||
     priority !== lead.priority ||
     partner !== lead.partner ||
     notes !== lead.notes ||
@@ -128,14 +138,18 @@ export function LeadModal({
     [activeStaff, sector, coverage],
   );
 
-  const persist = async (overrides: Partial<{ status: Status }> = {}) => {
+  const persist = async (overrides: Partial<{ status: StatusDef }> = {}) => {
     const nextStatus = overrides.status ?? status;
     setSaving(true);
     setError('');
     const t = WRITE_TARGET[lead.source];
+    // Le lien est réécrit à chaque enregistrement, même inchangé : c'est ce
+    // qui rattache une demande encore lue sur l'ancien select. Sauf pour un
+    // libellé hérité inconnu, qui n'a pas de ligne Statuts à désigner.
+    const write = isLegacyId(nextStatus.id) ? null : statusWrite(lead.source, nextStatus);
     try {
       await updateRecord(t.tableId, lead.id, {
-        [t.status]: nextStatus,
+        ...write?.fields,
         [t.priority]: priority,
         [t.partner]: partner,
         // Champ de liaison : un tableau d'identifiants, jamais une chaîne.
@@ -144,7 +158,7 @@ export function LeadModal({
       });
       const name = staff.find((s) => s.id === assigneeId)?.name;
       onSaved({
-        status: nextStatus,
+        ...write?.local,
         priority,
         partner,
         notes,
@@ -346,25 +360,45 @@ export function LeadModal({
               {/* Les deux listes reprennent le code couleur de la valeur
                   sélectionnée : on lit l'état du dossier sans avoir à
                   déchiffrer le libellé. */}
-              <Label text="Statut">
-                <select
-                  data-autofocus
-                  className={`field font-semibold ${TONE_CLASS[STATUS_TONE[status]]}`}
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as Status)}
+              <div>
+                <label
+                  htmlFor={statusId}
+                  className="mb-1.5 block text-xs font-medium text-muted"
                 >
-                  {/* Un statut historique hors liste reste sélectionnable pour
-                      ne pas le réécrire silencieusement à l'enregistrement. */}
-                  {(SELECTABLE_STATUSES.includes(status)
-                    ? SELECTABLE_STATUSES
-                    : STATUSES
-                  ).map((s) => (
-                    <option key={s} value={s} className="bg-surface font-normal text-ink">
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </Label>
+                  Statut
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    id={statusId}
+                    data-autofocus
+                    className={`field min-w-0 flex-1 font-semibold ${TONE_CLASS[status.tone]}`}
+                    value={status.id}
+                    onChange={(e) => {
+                      const next = statuses.byId.get(e.target.value);
+                      if (next) setStatus(next);
+                    }}
+                  >
+                    {/* Un statut archivé ou hérité reste dans la liste quand la
+                        demande le porte, pour ne pas le réécrire en silence. */}
+                    {selectableStatuses(statuses, status).map((s) => (
+                      <option key={s.id} value={s.id} className="bg-surface font-normal text-ink">
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  {onManageStatuses && (
+                    <button
+                      type="button"
+                      onClick={onManageStatuses}
+                      className="inline-flex shrink-0 items-center justify-center self-stretch rounded-control px-2.5 border border-line bg-surface text-muted transition-colors hover:text-ink focus-visible:shadow-focus focus-visible:outline-none"
+                      aria-label="Gérer les statuts"
+                      title="Gérer les statuts"
+                    >
+                      <Settings2 className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              </div>
 
               <Label text="Priorité">
                 <select
@@ -439,8 +473,8 @@ export function LeadModal({
             tone="danger"
             icon={AlertTriangle}
             busy={saving}
-            disabled={status === 'Hors Critères'}
-            onClick={() => void persist({ status: 'Hors Critères' })}
+            disabled={status.role === 'hors_criteres'}
+            onClick={() => void persist({ status: statusForRole(statuses, 'hors_criteres') })}
           >
             Hors critères
           </SecondaryButton>

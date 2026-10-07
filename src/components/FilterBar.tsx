@@ -12,7 +12,7 @@
 import { FilterX } from 'lucide-react';
 import type { Stats } from '../lib/filters';
 import { ALL, countActiveFilters, type FilterState } from '../lib/filters';
-import { PRIORITIES, type Priority, type Status } from '../lib/schema';
+import { PRIORITIES, type Priority } from '../lib/schema';
 import { SearchableSelect } from './SearchableSelect';
 import { SecondaryButton, SearchField } from './ui';
 
@@ -47,9 +47,7 @@ export function FilterBar({
   const activeCount = countActiveFilters(filters);
 
   // Un statut sans aucun enregistrement est inutile à proposer.
-  const statuses = (Object.entries(stats.byStatus) as Array<[Status, number]>)
-    .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1]);
+  const statuses = [...stats.byStatus.values()].sort((a, b) => b.count - a.count);
 
   return (
     <div className="space-y-3 rounded-card border border-line bg-surface p-4">
@@ -77,12 +75,12 @@ export function FilterBar({
         <Select
           label="Statut"
           value={filters.status}
-          onChange={(v) => onChange({ status: v as Status | typeof ALL })}
+          onChange={(v) => onChange({ status: v })}
         >
           <option value={ALL}>Tous ({stats.total})</option>
-          {statuses.map(([s, n]) => (
-            <option key={s} value={s}>
-              {s} ({n})
+          {statuses.map(({ status, count }) => (
+            <option key={status.id} value={status.id}>
+              {status.name} ({count})
             </option>
           ))}
         </Select>

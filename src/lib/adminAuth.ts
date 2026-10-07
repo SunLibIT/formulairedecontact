@@ -33,6 +33,8 @@ export interface AdminSession {
   name: string;
   /** Verdict du serveur au moment de la connexion, réévalué à chaque écriture. */
   canWrite: boolean;
+  /** Groupe RH admin (Direction, Administratif) : gère les statuts. Relu par le serveur à chaque écriture. */
+  isAdmin: boolean;
 }
 
 /** Repli mémoire, quand `sessionStorage` est inaccessible. */
@@ -148,6 +150,7 @@ interface PopupMessage {
   email?: string;
   name?: string;
   canWrite?: boolean;
+  isAdmin?: boolean;
 }
 
 /**
@@ -192,6 +195,7 @@ export function signIn(): Promise<AdminSession | null> {
         email: data.email,
         name: data.name ?? '',
         canWrite: Boolean(data.canWrite),
+        isAdmin: Boolean(data.isAdmin),
       });
     };
 
@@ -237,6 +241,7 @@ export function consumeFragmentSession(): AdminSession | null {
     email,
     name: params.get('name') ?? '',
     canWrite: params.get('canWrite') === '1',
+    isAdmin: params.get('isAdmin') === '1',
   };
   setSession(session);
   return session;
@@ -261,6 +266,7 @@ export async function refreshSession(): Promise<AdminSession | null> {
       email?: string;
       name?: string;
       canWrite?: boolean;
+      isAdmin?: boolean;
     };
     if (!body.signedIn) {
       setSession(null);
@@ -271,6 +277,7 @@ export async function refreshSession(): Promise<AdminSession | null> {
       email: body.email ?? session.email,
       name: body.name ?? session.name,
       canWrite: Boolean(body.canWrite),
+      isAdmin: Boolean(body.isAdmin),
     };
     setSession(refreshed);
     return refreshed;

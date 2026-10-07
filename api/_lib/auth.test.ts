@@ -9,6 +9,7 @@ import { GET as authGet } from '../auth';
 import {
   googleAuthEnabled,
   lookupStaff,
+  requireAdmin,
   requireWriter,
   signPayload,
   signSessionToken,
@@ -22,6 +23,8 @@ const CONTACT_TABLE = 'tblcgBrFfVCBrczdl';
 const RECORD = 'recABCDEFGH123456';
 const STAFF_NAME = 'fldELWYPe8utsKKcV';
 const STAFF_INACTIVE = 'fldcYvayoR3Dlthwe';
+const STAFF_GROUP = 'fldY8wfV9GKnUZgHB';
+const STATUSES_TABLE = 'tblipMIYgKRdFOI3y';
 
 const GOOGLE_ENV = {
   GOOGLE_CLIENT_ID: 'client-de-test.apps.googleusercontent.com',
@@ -37,7 +40,9 @@ const GOOGLE_ENV = {
  * Airtable (le PATCH relayé). Toute autre URL fait échouer le test — un appel
  * qu'on n'a pas prévu est une information, pas un détail.
  */
-function stubNetwork(options: { staff?: { inactive?: boolean } | null } = {}) {
+function stubNetwork(
+  options: { staff?: { inactive?: boolean; group?: unknown } | null } = {},
+) {
   const calls: string[] = [];
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
@@ -54,6 +59,7 @@ function stubNetwork(options: { staff?: { inactive?: boolean } | null } = {}) {
                 fields: {
                   [STAFF_NAME]: 'Camille Martin',
                   ...(staff.inactive ? { [STAFF_INACTIVE]: true } : {}),
+                  ...(staff.group !== undefined ? { [STAFF_GROUP]: staff.group } : {}),
                 },
               },
             ];
@@ -163,6 +169,7 @@ describe('lookupStaff', () => {
     await expect(lookupStaff('camille@sunlib.fr')).resolves.toEqual({
       allowed: true,
       name: 'Camille Martin',
+      admin: false,
     });
   });
 
@@ -458,5 +465,84 @@ describe('POST et DELETE /api/airtable', () => {
     );
     // Une session valide n'élargit pas le périmètre des tables joignables.
     expect(res.status).toBe(403);
+  });
+});
+
+/* ------------------------------------------------- gestion des statuts */
+
+function statusRequest(method: 'PATCH' | 'POST' | 'DELETE', headers: Record<string, string> = {}) {
+  const record = method === 'POST' ? '' : `&record=${RECORD}`;
+  return new Request(`https://exemple.test/api/airtable?table=${STATUSES_TABLE}${record}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    ...(method === 'DELETE' ? {} : { body: JSON.stringify({ fields: { fldFWdsjqWBE2qQrq: 'Rappel' } }) }),
+  });
+}
+
+const bearer = () => ({
+  Authorization: `Bearer ${signSessionToken({ email: 'camille@sunlib.fr', name: 'Camille' })}`,
+});
+
+describe('lookupStaff — groupe admin', () => {
+  beforeEach(enableGoogle);
+
+  it.each([
+    ['un select simple', { name: 'Direction' }],
+    ['un texte', 'Administratif'],
+    ['un select multiple', [{ name: 'Commercial' }, { name: 'Direction' }]],
+  ])('reconnaît un admin quand le groupe est %s', async (_, group) => {
+    stubNetwork({ staff: { group } });
+    expect((await lookupStaff('camille@sunlib.fr')).admin).toBe(true);
+  });
+
+  it('ne fait pas d’un commercial un admin', async () => {
+    stubNetwork({ staff: { group: { name: 'Commercial' } } });
+    expect((await lookupStaff('camille@sunlib.fr')).admin).toBe(false);
+  });
+
+  it('retire le droit admin à un compte désactivé', async () => {
+    stubNetwork({ staff: { group: { name: 'Direction' }, inactive: true } });
+    expect((await lookupStaff('camille@sunlib.fr')).admin).toBe(false);
+  });
+});
+
+describe('requireAdmin', () => {
+  it('refuse sous le régime historique, où personne n’est identifié', async () => {
+    disableGoogle();
+    const check = await requireAdmin(statusRequest('PATCH'));
+    expect(check.ok).toBe(false);
+  });
+});
+
+describe('écritures sur la table Statuts', () => {
+  beforeEach(enableGoogle);
+
+  it('accepte un admin', async () => {
+    stubNetwork({ staff: { group: { name: 'Direction' } } });
+    expect((await airtablePatch(statusRequest('PATCH', bearer()))).status).toBe(200);
+    expect((await airtablePost(statusRequest('POST', bearer()))).status).toBe(200);
+  });
+
+  it('refuse un collaborateur actif hors des groupes admin', async () => {
+    // Il peut écrire sur les demandes, pas sur la configuration partagée.
+    stubNetwork({ staff: { group: { name: 'Commercial' } } });
+    const res = await airtablePatch(statusRequest('PATCH', bearer()));
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain('réservée');
+  });
+
+  it('refuse toute suppression, même à un admin', async () => {
+    const { calls } = stubNetwork({ staff: { group: { name: 'Direction' } } });
+    const res = await airtableDelete(statusRequest('DELETE', bearer()));
+    expect(res.status).toBe(405);
+    expect(calls.some((u) => u.includes(STATUSES_TABLE))).toBe(false);
+  });
+
+  it('laisse la lecture publique', async () => {
+    stubNetwork();
+    const res = await airtableGet(
+      new Request(`https://exemple.test/api/airtable?table=${STATUSES_TABLE}`),
+    );
+    expect(res.status).toBe(200);
   });
 });

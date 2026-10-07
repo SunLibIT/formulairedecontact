@@ -21,6 +21,8 @@ export const TABLES = {
   staff: 'tblySHLLDvHjk2ktK',
   /** Sectorisation commerciale : un département, le commercial qui le couvre. */
   territories: 'tblw11IuaIggSkNu5',
+  /** Statuts de suivi commercial, gérés depuis l'app par les admins. Voir `lib/statuses.ts`. */
+  statuses: 'tblipMIYgKRdFOI3y',
 } as const;
 
 /** Champs de la table « Demandes de contact ». */
@@ -43,7 +45,13 @@ export const CONTACT = {
   department: 'fldO9LPuTO0PRIPt6',
   region: 'fldZSqh21vXrfsBq4',
   country: 'fldGhnX2PkchpW76f',
-  status: 'fldZjSSAAZVhcVEeH',
+  /** Lien vers la table Statuts — le statut de la demande. */
+  statusLink: 'fldJ1o4Y2cIb9qq9o',
+  /**
+   * Ancien single select « Statut », en **lecture seule**. Relu en repli tant
+   * qu'une demande n'a pas de lien ; plus jamais écrit.
+   */
+  statusLegacy: 'fldZjSSAAZVhcVEeH',
   priority: 'fldiFRpsqZWu50Puz',
   partner: 'fldckAwd6C9Fi6Cdm',
   assignee: 'fldzJnDK7zuZ8eExl',
@@ -95,7 +103,10 @@ export const LEAD = {
   monthlyBill: 'fldvvjiCGcM7XJsF7',
   recommendedPower: 'fld3LX5WHjveMC7fd',
   createdOn: 'fld0a0KT5yytGuyZF',
-  status: 'fldE04cmRvQCtJEHY',
+  /** Lien vers la table Statuts — le statut du lead. */
+  statusLink: 'fldnUeIkyfvfsrM72',
+  /** Ancien single select « Statut », en lecture seule. Voir `CONTACT.statusLegacy`. */
+  statusLegacy: 'fldE04cmRvQCtJEHY',
   priority: 'fldyMVACirNJuXrmP',
   assigneeText: 'fldQoya2KNtmgq3Nx',
   notes: 'fldF946cmgvi0z5U0',
@@ -172,28 +183,76 @@ export const STAFF = {
   inactive: 'fldcYvayoR3Dlthwe',
 } as const;
 
-/**
- * Statuts de suivi commercial.
- *
- * Les libellés sont ceux des options Airtable, à l'accent près — les deux
- * tables partagent exactement le même jeu. C'est cette égalité qui permet
- * de filtrer et de compter les deux onglets avec le même code.
- */
-export const STATUSES = [
-  'Nouveau',
-  'A contacter',
-  'Qualifié',
-  'Signé',
-  'A relancer',
-  'Hors Critères',
-  'Archivé',
-] as const;
-export type Status = (typeof STATUSES)[number];
+/** Champs de la table « Statuts ». */
+export const STATUS = {
+  name: 'fldFWdsjqWBE2qQrq',
+  tone: 'flduCvbXs319FEamn',
+  order: 'fldNrYviRBYPP19BB',
+  archived: 'fldX3FzdPGxGBPLlw',
+  role: 'fldEPq3PpzWuCRsur',
+} as const;
 
-/** Statuts proposés à la saisie. « Archivé » n'existe que sur d'anciens enregistrements. */
-export const SELECTABLE_STATUSES: readonly Status[] = STATUSES.filter(
-  (s) => s !== 'Archivé',
-);
+/**
+ * Rôle d'un statut : ce que l'application sait de lui, indépendamment de son
+ * nom.
+ *
+ * Les admins renomment les statuts depuis l'app ; les KPI, l'archivage, les
+ * tuiles et le webhook Typeform ne peuvent donc plus reconnaître un statut à
+ * son libellé. Ils le reconnaissent à son rôle, qui ne change jamais. Un
+ * statut créé depuis l'app n'a pas de rôle (`null`) : il s'affiche, se filtre
+ * et se compte, mais aucune règle métier ne s'y accroche.
+ *
+ * Les valeurs sont les options du champ `Rôle`, en ASCII : ce sont des
+ * identifiants, jamais affichés.
+ */
+export const STATUS_ROLES = [
+  'nouveau',
+  'a_contacter',
+  'qualifie',
+  'signe',
+  'a_relancer',
+  'hors_criteres',
+  'archive',
+] as const;
+export type StatusRole = (typeof STATUS_ROLES)[number];
+
+/** Un statut de suivi, tel que lu dans la table Statuts. */
+export interface StatusDef {
+  /** Identifiant de l'enregistrement Statuts — c'est lui qu'on écrit dans le lien. */
+  id: string;
+  name: string;
+  tone: Tone;
+  /** Position dans le pipeline : ordonne les menus et le tri par statut. */
+  order: number;
+  /** Retiré des menus de saisie, mais toujours affiché sur les leads qui le portent. */
+  archived: boolean;
+  role: StatusRole | null;
+  /**
+   * Vrai pour un libellé hérité qui ne correspond à aucun statut connu — une
+   * option parasite de l'ancien select. Compté à part par les KPI.
+   */
+  unknown?: boolean;
+}
+
+/**
+ * Les sept statuts d'origine, tels que créés dans la table Statuts le
+ * 2026-10-07, identifiants compris.
+ *
+ * Deux usages. **Repli** : si la table ne se charge pas, l'app tourne sur ce
+ * jeu au lieu de tomber. **Reprise** : un lead sans lien porte encore un
+ * libellé de l'ancien select ; il se rattache à son statut par ce libellé
+ * *d'origine* puis par l'identifiant, ce qui survit à un renommage — chercher
+ * le libellé dans la table vivante échouerait dès le premier renommage.
+ */
+export const DEFAULT_STATUSES: readonly StatusDef[] = [
+  { id: 'recx6eyiNYcJCctd2', name: 'Nouveau', tone: 'fresh', order: 1, archived: false, role: 'nouveau' },
+  { id: 'recLTpAsBorbb5Gp0', name: 'A contacter', tone: 'action', order: 2, archived: false, role: 'a_contacter' },
+  { id: 'recfDmm8lMvcPffx2', name: 'Qualifié', tone: 'qualified', order: 3, archived: false, role: 'qualifie' },
+  { id: 'recpZ8sPXDL5w8yFZ', name: 'Signé', tone: 'signed', order: 4, archived: false, role: 'signe' },
+  { id: 'rech6xrIebR7phhiF', name: 'A relancer', tone: 'followup', order: 5, archived: false, role: 'a_relancer' },
+  { id: 'recVPeBFtLQYATCR7', name: 'Hors Critères', tone: 'rejected', order: 6, archived: false, role: 'hors_criteres' },
+  { id: 'recWlsoKQyl6Er9Wh', name: 'Archivé', tone: 'neutral', order: 7, archived: false, role: 'archive' },
+];
 
 export const PRIORITIES = ['Basse', 'Moyenne', 'Haute'] as const;
 export type Priority = (typeof PRIORITIES)[number];
@@ -209,9 +268,9 @@ export const REQUESTER_TYPES = [
 /**
  * Code couleur du suivi commercial.
  *
- * Défini une seule fois ici : les badges, les tuiles de statistiques et les
- * filtres le lisent tous, donc changer une couleur se fait en une ligne et se
- * répercute dans toute l'application.
+ * Le ton de chaque statut vit dans la table Statuts (champ `Ton`) et se change
+ * depuis l'app ; les tons eux-mêmes sont définis ici, rendus par
+ * `lib/tones.ts`. Le tableau ci-dessous décrit le jeu d'origine.
  *
  * Les noms sont sémantiques et non présentationnels : si la charte évolue, on
  * change la couleur associée à `action` sans avoir à renommer quoi que ce soit.
@@ -249,15 +308,22 @@ export type Tone =
   | 'signed'
   | 'rejected';
 
-export const STATUS_TONE: Record<Status, Tone> = {
-  Nouveau: 'fresh',
-  'A contacter': 'action',
-  Qualifié: 'qualified',
-  Signé: 'signed',
-  'A relancer': 'followup',
-  'Hors Critères': 'rejected',
-  Archivé: 'neutral',
-};
+/**
+ * Les tons proposés au choix d'un admin, dans l'ordre du sélecteur.
+ *
+ * Une palette **fermée** plutôt qu'une couleur libre : chaque ton a son icône
+ * et des valeurs vérifiées en contraste, en clair comme en sombre. Une couleur
+ * hexadécimale saisie à la main ne garantirait ni l'un ni l'autre.
+ */
+export const TONES: ReadonlyArray<{ tone: Tone; label: string }> = [
+  { tone: 'fresh', label: 'Vert' },
+  { tone: 'action', label: 'Ambre clair' },
+  { tone: 'followup', label: 'Ambre foncé' },
+  { tone: 'qualified', label: 'Bleu' },
+  { tone: 'signed', label: 'Violet' },
+  { tone: 'rejected', label: 'Rouge' },
+  { tone: 'neutral', label: 'Gris' },
+];
 
 /**
  * Couleurs de la priorité, sur une échelle d'urgence croissante :

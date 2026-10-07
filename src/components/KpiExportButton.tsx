@@ -15,14 +15,17 @@ import { useState } from 'react';
 import { downloadCsv, toCsv } from '../lib/csv';
 import { buildKpiExport, kpiExportFilename, type KpiScope } from '../lib/kpiExport';
 import type { Lead } from '../lib/records';
+import type { StatusDef } from '../lib/statuses';
 import { SecondaryButton } from './ui';
 
 export function KpiExportButton({
   leads,
   scope,
+  statuses,
 }: {
   leads: Lead[];
   scope: KpiScope;
+  statuses: readonly StatusDef[];
 }) {
   // Mémorisé avec la liste qui l'a produit : changer de source ou de période
   // efface le message plutôt que de laisser un compte rendu périmé à l'écran.
@@ -30,7 +33,7 @@ export function KpiExportButton({
   const message = done?.of === leads ? done.text : '';
 
   const run = () => {
-    const table = buildKpiExport(leads, scope);
+    const table = buildKpiExport(leads, scope, Date.now(), statuses);
     const ok = downloadCsv(kpiExportFilename(), toCsv(table));
     setDone({
       text: ok

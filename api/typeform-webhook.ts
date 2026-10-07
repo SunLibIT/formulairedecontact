@@ -36,7 +36,7 @@ import {
 } from './_lib/typeform.js';
 // Les identifiants de champs viennent du schéma partagé : une seule
 // définition pour le front et pour le webhook.
-import { CONTACT, FIELD_NAMES, TABLES } from '../src/lib/schema.js';
+import { CONTACT, DEFAULT_STATUSES, FIELD_NAMES, TABLES } from '../src/lib/schema.js';
 
 interface WebhookPayload {
   event_id?: string;
@@ -66,6 +66,8 @@ const FORM_LABEL: Record<string, string> = {
   [TYPEFORM_FORMS.MAR26]: 'gbPj3B1m (MAR26)',
   [TYPEFORM_FORMS.SEP26]: 'EIgYmzF7 (SEP26)',
 };
+
+const NEW_STATUS_ID = DEFAULT_STATUSES.find((s) => s.role === 'nouveau')!.id;
 
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), {
@@ -272,7 +274,10 @@ export async function POST(req: Request): Promise<Response> {
   // commercial à chaque réémission du webhook.
   const isNew = !(await exists(responseId));
   if (isNew) {
-    fields[CONTACT.status] = 'Nouveau';
+    // Lien vers le statut de rôle « nouveau », par son identifiant : il
+    // survit à un renommage, et la ligne ne peut être ni supprimée (le proxy
+    // refuse) ni archivée (statut système) depuis l'app.
+    fields[CONTACT.statusLink] = [NEW_STATUS_ID];
     fields[CONTACT.priority] = defaultPriority(requesterType);
   }
 

@@ -15,6 +15,7 @@ import {
 } from './marketingExport';
 import { toCsv } from './csv';
 import type { Lead } from './records';
+import { legacyStatus as st } from './statuses';
 
 /** Lead minimal complet, à surcharger champ par champ dans chaque test. */
 function lead(patch: Partial<Lead> = {}): Lead {
@@ -41,7 +42,9 @@ function lead(patch: Partial<Lead> = {}): Lead {
       region: 'Auvergne-Rhône-Alpes',
       country: 'France',
     },
-    status: 'Nouveau',
+    status: st('Nouveau'),
+    statusLinkId: null,
+    statusLegacy: '',
     priority: 'Moyenne',
     partner: '',
     assigneeIds: [],
