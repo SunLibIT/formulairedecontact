@@ -66,7 +66,13 @@ import {
 import { buildDuplicateIndex, groupByAddress, keepDuplicates } from './lib/duplicates';
 import { mergeFields, planMerge, type MergePlan } from './lib/merge';
 import type { Lead } from './lib/records';
-import { countOf, statusForRole, type StatusRole } from './lib/statuses';
+import {
+  countOf,
+  requireRole,
+  statusForRole,
+  type StatusDef,
+  type StatusRole,
+} from './lib/statuses';
 import { sectorForLead, type Sector } from './lib/territories';
 import { WRITE_TARGET, statusWrite } from './lib/writeTargets';
 
@@ -298,7 +304,7 @@ export default function App() {
       }
       const archived = statusWrite(
         plan.target.source,
-        statusForRole(statuses.registry, 'archive'),
+        requireRole(statuses.registry, 'archive', 'Archivage'),
       );
       await updateRecords(
         target.tableId,
@@ -330,7 +336,10 @@ export default function App() {
   const archiveDuplicate = useCallback(
     async (lead: Lead) => {
       const target = WRITE_TARGET[lead.source];
-      const archived = statusWrite(lead.source, statusForRole(statuses.registry, 'archive'));
+      const archived = statusWrite(
+        lead.source,
+        requireRole(statuses.registry, 'archive', 'Archivage'),
+      );
       await updateRecord(target.tableId, lead.id, archived.fields);
       // Correction locale : la ligne quitte la liste — `applyFilters` masque
       // les archivées — et sort de l'index des doublons, donc le compteur du
@@ -339,6 +348,39 @@ export default function App() {
       source.patchLocal(lead.id, archived.local);
     },
     [contact, solar, statuses.registry],
+  );
+
+  /**
+   * Bascule vers `to` toutes les demandes au statut `fromId`, avant sa
+   * suppression. Lit les demandes chargées — lien ou libellé hérité résolu,
+   * les deux sont couverts puisque le statut résolu est le même.
+   *
+   * Lève une erreur si une seule ligne n'a pas pu être écrite : la
+   * suppression qui suit doit alors être abandonnée, sinon ces demandes
+   * perdraient leur statut sans trace.
+   */
+  const reassignStatus = useCallback(
+    async (fromId: string, to: StatusDef) => {
+      let failed = 0;
+      for (const source of [contact, solar]) {
+        const leads = source.leads.filter((l) => l.status.id === fromId);
+        if (!leads.length) continue;
+        const write = statusWrite(leads[0].source, to);
+        const result = await updateRecords(
+          WRITE_TARGET[leads[0].source].tableId,
+          leads.map((l) => ({ id: l.id, fields: write.fields })),
+        );
+        const refused = new Set(result.failed);
+        for (const l of leads) if (!refused.has(l.id)) source.patchLocal(l.id, write.local);
+        failed += refused.size;
+      }
+      if (failed) {
+        throw new Error(
+          `${failed} demande${failed > 1 ? 's n’ont' : ' n’a'} pas pu être basculée${failed > 1 ? 's' : ''} : suppression annulée.`,
+        );
+      }
+    },
+    [contact, solar],
   );
 
   /** Bascule un statut depuis une tuile : re-cliquer désélectionne. */
@@ -533,14 +575,16 @@ export default function App() {
               signal visuel que le badge correspondant sur les cartes. */}
           {TILE_ROLES.map((role) => {
             // Tuiles accrochées au rôle : le libellé est le nom courant du
-            // statut, donc un renommage s'y voit sans toucher au code.
+            // statut, donc un renommage s'y voit sans toucher au code. Un rôle
+            // qu'aucun statut ne porte plus n'a pas de tuile.
             const s = statusForRole(statuses.registry, role);
+            if (!s) return null;
             return (
               <StatTile
                 key={role}
                 label={s.name}
                 value={countOf(stats.byStatus, s.id)}
-                tone={s.tone}
+                color={s.color}
                 active={current.status === s.id}
                 onClick={() => toggleStatus(s.id)}
               />
@@ -739,16 +783,6 @@ export default function App() {
         />
       )}
 
-      {statusesOpen && auth.isAdmin && (
-        <StatusManagerModal
-          statuses={statuses.registry.list}
-          usage={statusUsage}
-          loadError={statuses.error}
-          onChange={statuses.replace}
-          onClose={() => setStatusesOpen(false)}
-        />
-      )}
-
       {selected && (
         <LeadModal
           lead={selected}
@@ -761,6 +795,19 @@ export default function App() {
           onArchiveDuplicate={archiveDuplicate}
           onClose={() => setSelected(null)}
           onSaved={onSaved}
+        />
+      )}
+
+      {/* Après la fiche, et au-dessus d'elle : la roue dentée de la fiche
+          ouvre cette fenêtre par-dessus, pas derrière. */}
+      {statusesOpen && auth.isAdmin && (
+        <StatusManagerModal
+          statuses={statuses.registry.list}
+          usage={statusUsage}
+          loadError={statuses.error}
+          onChange={statuses.update}
+          onReassign={reassignStatus}
+          onClose={() => setStatusesOpen(false)}
         />
       )}
     </div>

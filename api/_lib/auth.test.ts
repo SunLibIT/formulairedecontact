@@ -531,11 +531,16 @@ describe('écritures sur la table Statuts', () => {
     expect(await res.text()).toContain('réservée');
   });
 
-  it('refuse toute suppression, même à un admin', async () => {
-    const { calls } = stubNetwork({ staff: { group: { name: 'Direction' } } });
+  it('laisse un admin supprimer un statut', async () => {
+    stubNetwork({ staff: { group: { name: 'Direction' } } });
+    expect((await airtableDelete(statusRequest('DELETE', bearer()))).status).toBe(200);
+  });
+
+  it('refuse la suppression à un non-admin', async () => {
+    const { calls } = stubNetwork({ staff: { group: { name: 'Commercial' } } });
     const res = await airtableDelete(statusRequest('DELETE', bearer()));
-    expect(res.status).toBe(405);
-    expect(calls.some((u) => u.includes(STATUSES_TABLE))).toBe(false);
+    expect(res.status).toBe(403);
+    expect(calls.some((u) => u.includes(STATUSES_TABLE) && !u.includes(STAFF_TABLE))).toBe(false);
   });
 
   it('laisse la lecture publique', async () => {

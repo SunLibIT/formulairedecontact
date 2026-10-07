@@ -57,6 +57,8 @@ export interface BarDatum {
   value: number;
   /** Uniquement pour les barres de statut. Absent = teinte nominale unique. */
   tone?: Tone;
+  /** Couleur libre d'un statut — prime sur `tone`. */
+  color?: string;
   /** Précision ajoutée **après** la part, jamais à sa place (« dont 12 à traiter »). */
   note?: string;
 }
@@ -95,11 +97,19 @@ export function HBars({
   return (
     <ul className="space-y-2">
       {data.map((d) => {
-        const Icon = d.tone ? TONE_ICON[d.tone] : null;
+        const Icon = d.tone && !d.color ? TONE_ICON[d.tone] : null;
+        const fill = d.color ?? (d.tone ? TONE_FILL[d.tone] : NOMINAL_FILL);
         const share = base ? Math.round((d.value / base) * 100) : 0;
         return (
           <li key={d.label} className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3">
             <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
+              {d.color && (
+                <span
+                  aria-hidden="true"
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: d.color }}
+                />
+              )}
               {Icon && (
                 <Icon
                   className="h-3.5 w-3.5 shrink-0"
@@ -119,7 +129,7 @@ export function HBars({
                 className="block h-full rounded-full transition-[width] duration-300"
                 style={{
                   width: `${Math.max((d.value / max) * 100, d.value > 0 ? 2 : 0)}%`,
-                  background: d.tone ? TONE_FILL[d.tone] : NOMINAL_FILL,
+                  background: fill,
                 }}
               />
             </span>

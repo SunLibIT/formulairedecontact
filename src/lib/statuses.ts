@@ -17,6 +17,7 @@ import {
   DEFAULT_STATUSES,
   STATUS,
   STATUS_ROLES,
+  TONE_HEX,
   type StatusDef,
   type StatusRole,
   type Tone,
@@ -24,15 +25,17 @@ import {
 
 export type { StatusDef, StatusRole };
 
-const TONE_SET = new Set<Tone>([
-  'neutral',
-  'fresh',
-  'action',
-  'followup',
-  'qualified',
-  'signed',
-  'rejected',
-]);
+/** Gris des statuts sans couleur lisible. */
+export const FALLBACK_COLOR = TONE_HEX.neutral;
+
+/** `#rgb` ou `#rrggbb`, normalisé en `#rrggbb` minuscule ; `null` sinon. */
+export function normaliseHex(v: string): string | null {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(v.trim());
+  if (!m) return null;
+  const hex = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1];
+  return `#${hex.toLowerCase()}`;
+}
+
 const ROLE_SET = new Set<string>(STATUS_ROLES);
 
 const selectName = (v: unknown): string => {
@@ -41,16 +44,23 @@ const selectName = (v: unknown): string => {
   return '';
 };
 
-/** Une ligne de la table Statuts. Un ton illisible retombe sur `neutral`, jamais sur une erreur. */
+/**
+ * Une ligne de la table Statuts. La couleur vient de `Couleur` ; à défaut, de
+ * l'ancien `Ton` ; à défaut, gris — jamais une erreur.
+ */
 export function toStatusDef(record: AirtableRecord): StatusDef {
   const f = record.fields;
   const tone = selectName(f[STATUS.tone]) as Tone;
   const role = selectName(f[STATUS.role]);
   const order = f[STATUS.order];
+  const color =
+    (typeof f[STATUS.color] === 'string' && normaliseHex(f[STATUS.color] as string)) ||
+    TONE_HEX[tone] ||
+    FALLBACK_COLOR;
   return {
     id: record.id,
     name: typeof f[STATUS.name] === 'string' ? (f[STATUS.name] as string).trim() : '',
-    tone: TONE_SET.has(tone) ? tone : 'neutral',
+    color,
     order: typeof order === 'number' ? order : Number.MAX_SAFE_INTEGER,
     archived: f[STATUS.archived] === true,
     role: ROLE_SET.has(role) ? (role as StatusRole) : null,
@@ -83,6 +93,20 @@ export const DEFAULT_REGISTRY = buildRegistry(DEFAULT_STATUSES);
 const LEGACY_ID = new Map(DEFAULT_STATUSES.map((s) => [s.name, s.id]));
 
 /**
+ * Statut affiché quand une demande n'en a aucun : ni lien, ni libellé hérité,
+ * et plus aucun statut ne porte le rôle d'entrée. Compté comme illisible.
+ */
+export const NO_STATUS: StatusDef = {
+  id: 'none',
+  name: 'Sans statut',
+  color: FALLBACK_COLOR,
+  order: Number.MAX_SAFE_INTEGER,
+  archived: true,
+  role: null,
+  unknown: true,
+};
+
+/**
  * Le statut d'un lead.
  *
  * 1. Le lien, quand il existe — le cas normal.
@@ -90,9 +114,13 @@ const LEGACY_ID = new Map(DEFAULT_STATUSES.map((s) => [s.name, s.id]));
  *    (`DEFAULT_STATUSES`), puis cherché par identifiant dans le registre
  *    vivant : un lead jamais repris garde ainsi son statut même après que
  *    « Nouveau » a été renommé.
- * 3. Un libellé hérité inconnu reste affiché tel quel, marqué `unknown`.
- * 4. Rien du tout vaut le statut de rôle « nouveau » : un statut absent n'est
- *    pas une valeur vide.
+ * 3. Un libellé hérité sans statut vivant — inconnu, ou dont le statut a été
+ *    supprimé — reste affiché tel quel, marqué `unknown`.
+ * 4. Rien du tout vaut le statut de rôle « nouveau », ou `NO_STATUS` si aucun
+ *    statut ne le porte plus.
+ *
+ * Seul le registre passé fait foi : un statut supprimé ne revient pas par les
+ * valeurs d'origine.
  */
 export function resolveStatus(
   registry: StatusRegistry,
@@ -100,35 +128,35 @@ export function resolveStatus(
   legacyLabel: string,
 ): StatusDef {
   if (linkId) {
-    const linked = registry.byId.get(linkId) ?? DEFAULT_REGISTRY.byId.get(linkId);
+    const linked = registry.byId.get(linkId);
     if (linked) return linked;
   }
   const label = legacyLabel.trim();
   if (label) {
     const id = LEGACY_ID.get(label);
-    const known = id ? registry.byId.get(id) ?? DEFAULT_REGISTRY.byId.get(id) : undefined;
+    const known = id ? registry.byId.get(id) : undefined;
     if (known) return known;
     return {
       id: `legacy:${label}`,
       name: label,
-      tone: 'neutral',
+      color: FALLBACK_COLOR,
       order: Number.MAX_SAFE_INTEGER,
       archived: true,
       role: null,
       unknown: true,
     };
   }
-  return statusForRole(registry, 'nouveau');
+  return statusForRole(registry, 'nouveau') ?? NO_STATUS;
 }
 
-/** Le statut qui porte un rôle. Jamais `undefined` : retombe sur le statut d'origine. */
-export function statusForRole(registry: StatusRegistry, role: StatusRole): StatusDef {
-  return registry.byRole.get(role) ?? DEFAULT_REGISTRY.byRole.get(role)!;
+/** Le statut qui porte un rôle, s'il y en a un — un admin peut l'avoir retiré. */
+export function statusForRole(registry: StatusRegistry, role: StatusRole): StatusDef | undefined {
+  return registry.byRole.get(role);
 }
 
 /**
- * Statuts proposés à la saisie : ni archivés, ni « Archivé » — on archive une
- * demande par le bouton prévu, qui passe par le rôle `archive`.
+ * Statuts proposés à la saisie : ni archivés, ni celui qui porte le rôle
+ * d'archivage — on archive une demande par le bouton prévu.
  *
  * `current` est ajouté s'il en est exclu, pour qu'un menu ouvert sur un lead
  * au statut archivé affiche ce statut au lieu d'une valeur vide.
@@ -142,8 +170,8 @@ export function selectableStatuses(registry: StatusRegistry, current?: StatusDef
 /** Vrai pour une demande archivée — sortie du flux de travail. */
 export const isArchivedStatus = (s: StatusDef): boolean => s.role === 'archive';
 
-/** Statuts qui ne sont pas encore dans un lien Airtable : rien à écrire pour eux. */
-export const isLegacyId = (id: string): boolean => id.startsWith('legacy:');
+/** Statuts sans ligne dans la table : rien à écrire pour eux. */
+export const isLegacyId = (id: string): boolean => id.startsWith('legacy:') || id === NO_STATUS.id;
 
 /* ------------------------------------------------------------- comptages */
 
@@ -181,3 +209,17 @@ export function countOfRole(counts: StatusCounts, role: StatusRole): number {
  */
 export const legacyStatus = (label: string): StatusDef =>
   resolveStatus(DEFAULT_REGISTRY, null, label);
+
+/**
+ * Le statut qui porte un rôle, ou une erreur qui dit comment le rétablir.
+ * Pour les gestes qui ne peuvent rien faire sans lui — archiver, notamment.
+ */
+export function requireRole(registry: StatusRegistry, role: StatusRole, what: string): StatusDef {
+  const status = statusForRole(registry, role);
+  if (!status) {
+    throw new Error(
+      `Aucun statut n'a le rôle « ${what} » : attribuez-le à un statut dans « Gérer les statuts ».`,
+    );
+  }
+  return status;
+}

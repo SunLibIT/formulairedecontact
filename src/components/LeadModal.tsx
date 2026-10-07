@@ -63,7 +63,7 @@ import {
   type CoverageIndex,
   type SectorIndex,
 } from '../lib/territories';
-import { TONE_CLASS } from '../lib/tones';
+import { TONE_CLASS, statusChipStyle } from '../lib/tones';
 import { WRITE_TARGET, statusWrite } from '../lib/writeTargets';
 import { SearchableSelect } from './SearchableSelect';
 import { Callout, PriorityBadge, RelativeDate, SecondaryButton, StatusBadge } from './ui';
@@ -101,6 +101,9 @@ export function LeadModal({
 }: Props) {
   const [status, setStatus] = useState<StatusDef>(lead.status);
   const statusId = useId();
+  // Raccourci « Hors critères » : le statut qui porte ce rôle, sous son nom
+  // courant. Aucun ne le porte — un admin l'a retiré — : pas de bouton.
+  const rejected = statusForRole(statuses, 'hors_criteres');
   const [priority, setPriority] = useState<Priority>(lead.priority);
   const [partner, setPartner] = useState(lead.partner);
   const [assigneeId, setAssigneeId] = useState(lead.assigneeIds[0] ?? '');
@@ -371,7 +374,8 @@ export function LeadModal({
                   <select
                     id={statusId}
                     data-autofocus
-                    className={`field min-w-0 flex-1 font-semibold ${TONE_CLASS[status.tone]}`}
+                    className="field min-w-0 flex-1 font-semibold"
+                    style={statusChipStyle(status.color)}
                     value={status.id}
                     onChange={(e) => {
                       const next = statuses.byId.get(e.target.value);
@@ -469,15 +473,19 @@ export function LeadModal({
               pose un statut, que la liste juste au-dessus permet de changer
               aussitôt. Une confirmation n'était que de la friction sur un
               geste de tri courant. */}
-          <SecondaryButton
-            tone="danger"
-            icon={AlertTriangle}
-            busy={saving}
-            disabled={status.role === 'hors_criteres'}
-            onClick={() => void persist({ status: statusForRole(statuses, 'hors_criteres') })}
-          >
-            Hors critères
-          </SecondaryButton>
+          {rejected ? (
+            <SecondaryButton
+              tone="danger"
+              icon={AlertTriangle}
+              busy={saving}
+              disabled={status.id === rejected.id}
+              onClick={() => void persist({ status: rejected })}
+            >
+              {rejected.name}
+            </SecondaryButton>
+          ) : (
+            <span />
+          )}
 
           <div className="flex items-center gap-2">
             <SecondaryButton onClick={onClose}>Fermer</SecondaryButton>

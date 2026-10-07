@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_STATUSES, STATUS } from '../lib/schema';
 import type { StatusDef } from '../lib/statuses';
@@ -8,48 +9,80 @@ import { StatusManagerModal } from './StatusManagerModal';
 vi.mock('../lib/airtable', () => ({
   updateRecord: vi.fn(),
   createRecord: vi.fn(),
+  deleteRecord: vi.fn(),
 }));
 const airtable = await import('../lib/airtable');
 const updateRecord = vi.mocked(airtable.updateRecord);
 const createRecord = vi.mocked(airtable.createRecord);
+const deleteRecord = vi.mocked(airtable.deleteRecord);
 
 const custom: StatusDef = {
   id: 'recCustom0000001',
   name: 'Rendez-vous fixé',
-  tone: 'signed',
+  color: '#db2777',
   order: 8,
   archived: false,
   role: null,
 };
 
-function open(statuses: StatusDef[] = [...DEFAULT_STATUSES, custom], onChange = vi.fn()) {
-  render(
-    <StatusManagerModal
-      statuses={statuses}
-      usage={new Map([[custom.id, 4]])}
-      loadError=""
-      onChange={onChange}
-      onClose={() => {}}
-    />,
+/** Hôte qui garde le registre, comme `useStatuses` : les écritures s'y cumulent. */
+function Host({
+  onReassign = vi.fn(async () => {}),
+}: {
+  onReassign?: (from: string, to: StatusDef) => Promise<void>;
+}) {
+  const [list, setList] = useState<StatusDef[]>([...DEFAULT_STATUSES, custom]);
+  return (
+    <>
+      <StatusManagerModal
+        statuses={list}
+        usage={new Map([[custom.id, 4]])}
+        loadError=""
+        onChange={(change) => setList(change)}
+        onReassign={onReassign}
+        onClose={() => {}}
+      />
+      <output data-testid="names">{list.map((s) => s.name).join('|')}</output>
+    </>
   );
-  return onChange;
 }
+
+/** Airtable renvoie la ligne écrite : on la reconstruit à partir des champs envoyés. */
+function echo(base: StatusDef[] = [...DEFAULT_STATUSES, custom]) {
+  updateRecord.mockImplementation(async (_t, id, fields) => {
+    const s = base.find((x) => x.id === id)!;
+    return {
+      id,
+      createdTime: '',
+      fields: {
+        [STATUS.name]: s.name,
+        [STATUS.color]: s.color,
+        [STATUS.order]: s.order,
+        ...(s.role ? { [STATUS.role]: s.role } : {}),
+        ...fields,
+      },
+    };
+  });
+}
+
+const names = () => screen.getByTestId('names').textContent ?? '';
 
 afterEach(() => {
   updateRecord.mockReset();
   createRecord.mockReset();
+  deleteRecord.mockReset();
 });
 
 describe('StatusManagerModal', () => {
-  it('ne propose pas d’archiver un statut système', () => {
-    open();
-    // Sept statuts d'origine, sept mentions ; seul le statut ajouté s'archive.
-    expect(screen.getAllByText('Statut système')).toHaveLength(7);
-    expect(screen.getAllByRole('button', { name: 'Archiver' })).toHaveLength(1);
+  it('laisse tout statut s’archiver et se supprimer, rôle ou non', () => {
+    render(<Host />);
+    expect(screen.queryByText('Statut système')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Archiver Nouveau' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Supprimer Nouveau' })).toBeTruthy();
   });
 
   it('refuse un nom déjà pris, accents et casse ignorés, sans rien écrire', () => {
-    open();
+    render(<Host />);
     const input = screen.getByLabelText('Nom du statut Rendez-vous fixé');
     fireEvent.change(input, { target: { value: 'qualifie' } });
     fireEvent.blur(input);
@@ -57,68 +90,120 @@ describe('StatusManagerModal', () => {
     expect(updateRecord).not.toHaveBeenCalled();
   });
 
-  it('renomme et remplace la ligne par celle renvoyée par Airtable', async () => {
-    updateRecord.mockResolvedValue({
-      id: custom.id,
-      createdTime: '',
-      fields: { [STATUS.name]: 'RDV fixé', [STATUS.tone]: 'signed', [STATUS.order]: 8 },
+  it('enregistre le nom en quittant le champ', async () => {
+    echo();
+    render(<Host />);
+    const input = screen.getByLabelText('Nom du statut Nouveau');
+    fireEvent.change(input, { target: { value: 'Entrant' } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(names()).toContain('Entrant'));
+    expect(updateRecord).toHaveBeenCalledWith(expect.any(String), DEFAULT_STATUSES[0].id, {
+      [STATUS.name]: 'Entrant',
     });
-    const onChange = open();
-    const input = screen.getByLabelText('Nom du statut Rendez-vous fixé');
-    fireEvent.change(input, { target: { value: 'RDV fixé' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    await waitFor(() => expect(onChange).toHaveBeenCalled());
-    expect(updateRecord).toHaveBeenCalledWith(expect.any(String), custom.id, {
-      [STATUS.name]: 'RDV fixé',
-    });
-    const next = onChange.mock.calls[0][0] as StatusDef[];
-    expect(next.find((s) => s.id === custom.id)?.name).toBe('RDV fixé');
   });
 
-  it('demande confirmation avant d’archiver, en disant combien de demandes le gardent', async () => {
-    updateRecord.mockResolvedValue({
-      id: custom.id,
-      createdTime: '',
-      fields: { [STATUS.name]: custom.name, [STATUS.archived]: true },
-    });
-    open();
-    fireEvent.click(screen.getByRole('button', { name: 'Archiver' }));
-    expect(updateRecord).not.toHaveBeenCalled();
-    expect(screen.getByText(/4 demandes le gardent/)).toBeTruthy();
+  it('garde deux renommages successifs, sans que le second efface le premier', async () => {
+    echo();
+    render(<Host />);
+    const a = screen.getByLabelText('Nom du statut Nouveau');
+    fireEvent.change(a, { target: { value: 'Entrant' } });
+    fireEvent.keyDown(a, { key: 'Enter' });
+    await waitFor(() => expect(names()).toContain('Entrant'));
+    const b = screen.getByLabelText('Nom du statut Qualifié');
+    fireEvent.change(b, { target: { value: 'Retenu' } });
+    fireEvent.keyDown(b, { key: 'Enter' });
+    await waitFor(() => expect(names()).toContain('Retenu'));
+    expect(names()).toContain('Entrant');
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: "Confirmer l'archivage" }));
+  it('accepte une couleur libre saisie en hexadécimal', async () => {
+    echo();
+    render(<Host />);
+    const hex = screen.getByLabelText('Couleur du statut Nouveau — code hexadécimal');
+    fireEvent.change(hex, { target: { value: '#12AB9F' } });
+    fireEvent.keyDown(hex, { key: 'Enter' });
     await waitFor(() =>
-      expect(updateRecord).toHaveBeenCalledWith(expect.any(String), custom.id, {
-        [STATUS.archived]: true,
+      expect(updateRecord).toHaveBeenCalledWith(expect.any(String), DEFAULT_STATUSES[0].id, {
+        [STATUS.color]: '#12ab9f',
       }),
     );
   });
 
-  it('montre le message d’Airtable quand l’écriture est refusée', async () => {
-    updateRecord.mockRejectedValue(new Error('Gestion des statuts réservée aux groupes Direction et Administratif.'));
-    open();
-    // Recolorer « Nouveau » (vert) en rouge.
-    fireEvent.click(screen.getAllByRole('radio', { name: 'Rouge' })[0]);
-    await waitFor(() => expect(screen.getByText(/réservée aux groupes/)).toBeTruthy());
+  it('déplace un rôle : il est retiré à celui qui le portait', async () => {
+    echo();
+    render(<Host />);
+    const selects = screen.getAllByLabelText('Rôle') as HTMLSelectElement[];
+    // Dernière ligne active : le statut ajouté.
+    fireEvent.change(selects[DEFAULT_STATUSES.length], { target: { value: 'nouveau' } });
+    await waitFor(() => expect(updateRecord).toHaveBeenCalledTimes(2));
+    expect(updateRecord.mock.calls[0]).toEqual([
+      expect.any(String),
+      DEFAULT_STATUSES[0].id,
+      { [STATUS.role]: null },
+    ]);
+    expect(updateRecord.mock.calls[1]).toEqual([
+      expect.any(String),
+      custom.id,
+      { [STATUS.role]: 'nouveau' },
+    ]);
   });
 
-  it('crée un statut avec le ton choisi, en fin de pipeline', async () => {
+  it('exige une cible avant de supprimer un statut porté par des demandes, puis bascule et supprime', async () => {
+    deleteRecord.mockResolvedValue(undefined);
+    const onReassign = vi.fn(async () => {});
+    render(<Host onReassign={onReassign} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer Rendez-vous fixé' }));
+    const confirm = screen.getByRole('button', { name: 'Supprimer' }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    expect(screen.getByText(/4 demandes le portent/)).toBeTruthy();
+
+    fireEvent.change(screen.getByDisplayValue('— choisir un statut —'), {
+      target: { value: DEFAULT_STATUSES[2].id },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
+    await waitFor(() => expect(deleteRecord).toHaveBeenCalledWith(expect.any(String), custom.id));
+    expect(onReassign).toHaveBeenCalledWith(
+      custom.id,
+      expect.objectContaining({ id: DEFAULT_STATUSES[2].id }),
+    );
+    expect(onReassign.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteRecord.mock.invocationCallOrder[0],
+    );
+    await waitFor(() => expect(names()).not.toContain('Rendez-vous fixé'));
+  });
+
+  it('ne supprime rien si la bascule échoue', async () => {
+    const onReassign = vi.fn(async () => {
+      throw new Error('2 demandes n’ont pas pu être basculées : suppression annulée.');
+    });
+    render(<Host onReassign={onReassign} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer Rendez-vous fixé' }));
+    fireEvent.change(screen.getByDisplayValue('— choisir un statut —'), {
+      target: { value: DEFAULT_STATUSES[2].id },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
+    await waitFor(() => expect(screen.getByText(/suppression annulée/)).toBeTruthy());
+    expect(deleteRecord).not.toHaveBeenCalled();
+  });
+
+  it('crée un statut avec sa couleur, en fin de pipeline', async () => {
     createRecord.mockResolvedValue({
       id: 'recNew0000000001',
       createdTime: '',
-      fields: { [STATUS.name]: 'À rappeler', [STATUS.tone]: 'action', [STATUS.order]: 9 },
+      fields: { [STATUS.name]: 'À rappeler', [STATUS.color]: '#db2777', [STATUS.order]: 9 },
     });
-    const onChange = open();
-    fireEvent.change(screen.getByLabelText('Nom du nouveau statut'), { target: { value: 'À rappeler' } });
-    const group = screen.getByRole('radiogroup', { name: 'Couleur du nouveau statut' });
-    fireEvent.click(group.querySelector('[aria-label="Ambre clair"]')!);
+    render(<Host />);
+    fireEvent.change(screen.getByLabelText('Nom du nouveau statut'), {
+      target: { value: 'À rappeler' },
+    });
+    const group = screen.getByRole('group', { name: 'Couleur du nouveau statut' });
+    fireEvent.click(group.querySelector('[title="Rose"]')!);
     fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }));
 
-    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    await waitFor(() => expect(names()).toContain('À rappeler'));
     expect(createRecord).toHaveBeenCalledWith(expect.any(String), {
       [STATUS.name]: 'À rappeler',
-      [STATUS.tone]: 'action',
+      [STATUS.color]: '#db2777',
       [STATUS.order]: 9,
     });
   });

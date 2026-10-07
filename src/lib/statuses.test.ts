@@ -4,6 +4,8 @@ import { toContactLead, withStatuses } from './records';
 import { CONTACT, DEFAULT_STATUSES, STATUS } from './schema';
 import {
   DEFAULT_REGISTRY,
+  FALLBACK_COLOR,
+  NO_STATUS,
   buildRegistry,
   countOfRole,
   resolveStatus,
@@ -34,7 +36,7 @@ describe('toStatusDef', () => {
       createdTime: '',
       fields: {
         [STATUS.name]: ' Rendez-vous fixé ',
-        [STATUS.tone]: { name: 'signed' },
+        [STATUS.color]: '#DB2777',
         [STATUS.order]: 8,
         [STATUS.archived]: true,
       },
@@ -42,16 +44,18 @@ describe('toStatusDef', () => {
     expect(s).toEqual({
       id: 'recNew0000000001',
       name: 'Rendez-vous fixé',
-      tone: 'signed',
+      color: '#db2777',
       order: 8,
       archived: true,
       role: null,
     });
   });
 
-  it('retombe sur le gris pour un ton illisible', () => {
-    const s = toStatusDef({ id: 'r', createdTime: '', fields: { [STATUS.tone]: 'fuchsia' } });
-    expect(s.tone).toBe('neutral');
+  it('relit l’ancien ton quand la couleur manque, puis retombe sur le gris', () => {
+    const fromTone = toStatusDef({ id: 'r', createdTime: '', fields: { [STATUS.tone]: { name: 'signed' } } });
+    expect(fromTone.color).toBe('#6d28d9');
+    const unreadable = toStatusDef({ id: 'r', createdTime: '', fields: { [STATUS.color]: 'fuchsia' } });
+    expect(unreadable.color).toBe(FALLBACK_COLOR);
   });
 });
 
@@ -76,20 +80,32 @@ describe('resolveStatus', () => {
   it('vaut « nouveau » quand rien n’est renseigné', () => {
     expect(resolveStatus(renamed, null, '').role).toBe('nouveau');
   });
+
+  it('ne ressuscite pas un statut supprimé par les valeurs d’origine', () => {
+    // « Qualifié » supprimé : un lead encore sur l'ancien select ne doit pas
+    // réafficher un statut qui n'existe plus.
+    const without = buildRegistry(DEFAULT_STATUSES.filter((s) => s.role !== 'qualifie'));
+    expect(resolveStatus(without, null, 'Qualifié')).toMatchObject({ unknown: true, name: 'Qualifié' });
+  });
+
+  it('dit « Sans statut » quand plus aucun statut ne porte le rôle d’entrée', () => {
+    const without = buildRegistry(DEFAULT_STATUSES.filter((s) => s.role !== 'nouveau'));
+    expect(resolveStatus(without, null, '')).toBe(NO_STATUS);
+  });
 });
 
 describe('selectableStatuses', () => {
   it('écarte les archivés et le statut « Archivé », dans l’ordre du pipeline', () => {
     const registry = buildRegistry([
       ...DEFAULT_STATUSES,
-      { id: 'recOld', name: 'Ancien', tone: 'neutral', order: 3.5, archived: true, role: null },
+      { id: 'recOld', name: 'Ancien', color: '#5b6472', order: 3.5, archived: true, role: null },
     ]);
     const names = selectableStatuses(registry).map((s) => s.name);
     expect(names).toEqual(['Nouveau', 'A contacter', 'Qualifié', 'Signé', 'A relancer', 'Hors Critères']);
   });
 
   it('ajoute le statut courant quand il en est exclu', () => {
-    const archived = statusForRole(DEFAULT_REGISTRY, 'archive');
+    const archived = statusForRole(DEFAULT_REGISTRY, 'archive')!;
     expect(selectableStatuses(DEFAULT_REGISTRY, archived).slice(-1)[0]?.id).toBe(archived.id);
   });
 });
@@ -97,8 +113,8 @@ describe('selectableStatuses', () => {
 describe('countOfRole', () => {
   it('compte par rôle, quel que soit le nom', () => {
     const counts: StatusCounts = new Map();
-    tallyStatus(counts, statusForRole(renamed, 'nouveau'));
-    tallyStatus(counts, statusForRole(renamed, 'nouveau'));
+    tallyStatus(counts, statusForRole(renamed, 'nouveau')!);
+    tallyStatus(counts, statusForRole(renamed, 'nouveau')!);
     expect(countOfRole(counts, 'nouveau')).toBe(2);
     expect(countOfRole(counts, 'qualifie')).toBe(0);
   });

@@ -18,6 +18,12 @@ const FOCUSABLE =
 export function useDialog(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
   const restoreTo = useRef<Element | null>(null);
+  // `onClose` est souvent une flèche recréée à chaque rendu du parent. En
+  // dépendance de l'effet, elle le relançait à chaque rendu : le focus était
+  // repris au champ en cours de saisie, ce qui le validait à moitié tapé.
+  // Lue par référence, elle ne relance plus rien.
+  const close = useRef(onClose);
+  close.current = onClose;
 
   useEffect(() => {
     restoreTo.current = document.activeElement;
@@ -29,9 +35,14 @@ export function useDialog(onClose: () => void) {
     else node?.focus();
 
     const onKey = (e: KeyboardEvent) => {
+      // Deux boîtes peuvent s'empiler (la gestion des statuts s'ouvre depuis
+      // une fiche) : seule celle du dessus réagit, sinon `Échap` fermerait
+      // les deux et le piège de focus de l'une se battrait avec l'autre.
+      const open = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (node && open.length && open[open.length - 1] !== node) return;
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        close.current();
         return;
       }
       if (e.key !== 'Tab' || !node) return;
@@ -63,7 +74,7 @@ export function useDialog(onClose: () => void) {
       // page après avoir fermé une fiche ouverte depuis le bas d'une liste.
       (restoreTo.current as HTMLElement | null)?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   return ref;
 }

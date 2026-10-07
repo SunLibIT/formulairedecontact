@@ -23,7 +23,16 @@ import {
   type StaffMember,
   type Territory,
 } from '../lib/records';
-import { CONTACT, LEAD, STAFF, STATUS, TABLES, TERRITORY, type StatusDef } from '../lib/schema';
+import {
+  CONTACT,
+  DEFAULT_STATUSES,
+  LEAD,
+  STAFF,
+  STATUS,
+  TABLES,
+  TERRITORY,
+  type StatusDef,
+} from '../lib/schema';
 import {
   DEFAULT_REGISTRY,
   buildRegistry,
@@ -175,7 +184,7 @@ let statusesCache: Promise<StatusDef[]> | null = null;
 
 function loadStatuses(): Promise<StatusDef[]> {
   statusesCache ??= listRecords(TABLES.statuses, {
-    fieldIds: [STATUS.name, STATUS.tone, STATUS.order, STATUS.archived, STATUS.role],
+    fieldIds: [STATUS.name, STATUS.color, STATUS.tone, STATUS.order, STATUS.archived, STATUS.role],
   })
     .then((records) => records.map(toStatusDef).filter((s) => s.name))
     .catch((err) => {
@@ -194,8 +203,11 @@ function loadStatuses(): Promise<StatusDef[]> {
  * fenêtre d'administration, qui est le seul endroit où cela change quelque
  * chose.
  *
- * `replace` applique un changement fait par la fenêtre d'administration sans
+ * `update` applique un changement fait par la fenêtre d'administration sans
  * relire la table : l'écriture Airtable a renvoyé la ligne, elle fait foi.
+ * Il prend une **fonction** de l'état précédent, pas une liste : deux
+ * écritures qui se terminent l'une après l'autre partiraient sinon de la
+ * même liste périmée, et la seconde effacerait la première à l'écran.
  */
 export function useStatuses() {
   const [defs, setDefs] = useState<StatusDef[] | null>(null);
@@ -216,12 +228,15 @@ export function useStatuses() {
     [defs],
   );
 
-  const replace = useCallback((next: StatusDef[]) => {
-    statusesCache = Promise.resolve(next);
-    setDefs(next);
+  const update = useCallback((change: (prev: StatusDef[]) => StatusDef[]) => {
+    setDefs((prev) => {
+      const next = change(prev ?? [...DEFAULT_STATUSES]);
+      statusesCache = Promise.resolve(next);
+      return next;
+    });
   }, []);
 
-  return { registry, loaded: defs !== null, error, replace };
+  return { registry, loaded: defs !== null, error, update };
 }
 
 /* ------------------------------------------------------------------- leads */

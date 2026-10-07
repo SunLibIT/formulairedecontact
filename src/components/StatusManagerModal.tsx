@@ -2,19 +2,23 @@
  * Gestion des statuts de suivi — réservée aux admins (groupes RH Direction et
  * Administratif).
  *
- * Ajouter, renommer, recolorer, réordonner, archiver. Jamais supprimer : des
- * demandes sont liées à chaque statut, et le proxy refuse de toute façon un
- * `DELETE` sur la table Statuts. Un statut archivé quitte les menus de saisie
- * mais reste affiché sur les demandes qui le portent, et se restaure d'un clic.
+ * Tout statut se renomme, se recolore (couleur libre), se réordonne, change de
+ * rôle, s'archive ou se supprime. Aucun n'est figé.
  *
- * Les statuts qui portent un **rôle** — les sept d'origine — se renomment et
- * se recolorent, mais ne s'archivent pas : les KPI, l'archivage des doublons,
- * les tuiles et le webhook Typeform s'y accrochent. Les archiver retirerait
- * « Nouveau » du formulaire alors que chaque demande entrante y arrive.
+ * - **Rôle** : ce que l'app sait d'un statut — celui des nouvelles demandes,
+ *   celui de l'archivage, ceux des taux… (`ROLE_LABEL`). Un rôle se porte par
+ *   un seul statut ; l'attribuer à un statut le retire à celui qui l'avait.
+ *   Un rôle que plus personne ne porte éteint la règle qui en dépend, sans
+ *   rien casser : la tuile disparaît, le bouton aussi.
+ * - **Archiver** retire le statut des menus ; les demandes le gardent.
+ * - **Supprimer** retire la ligne. Si des demandes le portent, il faut d'abord
+ *   choisir vers quel statut les basculer : une suppression ne laisse jamais
+ *   de demande sans statut.
  *
  * Pas d'écriture optimiste : chaque changement attend la ligne renvoyée par
- * Airtable, qui fait foi, puis la remplace dans le registre. Un renommage
- * refusé laisse donc l'ancien nom affiché, avec le message d'Airtable tel quel.
+ * Airtable, qui fait foi. Les mises à jour du registre passent par une
+ * fonction de l'état précédent, pour que deux écritures rapprochées ne
+ * s'effacent pas l'une l'autre.
  */
 import {
   AlertTriangle,
@@ -24,18 +28,26 @@ import {
   ArrowUp,
   Check,
   Loader2,
-  Lock,
   Plus,
   Settings2,
+  Trash2,
   X,
 } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useDialog } from '../hooks/useDialog';
-import { createRecord, updateRecord } from '../lib/airtable';
-import { STATUS, TABLES, TONES, type Tone } from '../lib/schema';
-import { byOrder, toStatusDef, type StatusDef } from '../lib/statuses';
-import { TONE_ACCENT, TONE_ICON } from '../lib/tones';
+import { createRecord, deleteRecord, updateRecord } from '../lib/airtable';
+import {
+  ROLE_LABEL,
+  STATUS,
+  STATUS_COLOR_PRESETS,
+  STATUS_ROLES,
+  TABLES,
+  type StatusRole,
+} from '../lib/schema';
+import { FALLBACK_COLOR, byOrder, normaliseHex, toStatusDef, type StatusDef } from '../lib/statuses';
 import { Callout, PrimaryButton, SecondaryButton, StatusBadge } from './ui';
+
+type Update = (change: (prev: StatusDef[]) => StatusDef[]) => void;
 
 interface Props {
   /** Tous les statuts, archivés compris. */
@@ -44,20 +56,30 @@ interface Props {
   usage: Map<string, number>;
   /** Erreur de chargement de la table Statuts, s'il y en a une. */
   loadError: string;
-  /** Remplace la liste après une écriture réussie. */
-  onChange: (next: StatusDef[]) => void;
+  /** Applique un changement au registre, à partir de son état courant. */
+  onChange: Update;
+  /** Bascule les demandes d'un statut vers un autre, avant sa suppression. */
+  onReassign: (fromId: string, to: StatusDef) => Promise<void>;
   onClose: () => void;
 }
 
 const normName = (s: string) =>
   s.trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-export function StatusManagerModal({ statuses, usage, loadError, onChange, onClose }: Props) {
+const errorText = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+
+export function StatusManagerModal({
+  statuses,
+  usage,
+  loadError,
+  onChange,
+  onReassign,
+  onClose,
+}: Props) {
   const dialogRef = useDialog(onClose);
   const titleId = useId();
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState('');
-  const [confirming, setConfirming] = useState<string | null>(null);
 
   const sorted = useMemo(() => [...statuses].sort(byOrder), [statuses]);
   const active = sorted.filter((s) => !s.archived);
@@ -70,86 +92,105 @@ export function StatusManagerModal({ statuses, usage, loadError, onChange, onClo
     return taken ? 'Un statut porte déjà ce nom.' : '';
   };
 
-  const replaceAll = (updated: StatusDef[]) => {
-    const byId = new Map(updated.map((s) => [s.id, s]));
-    onChange(statuses.map((s) => byId.get(s.id) ?? s));
+  const merge = (rows: StatusDef[]) => {
+    const byId = new Map(rows.map((s) => [s.id, s]));
+    onChange((prev) => prev.map((s) => byId.get(s.id) ?? s));
   };
 
-  const write = async (id: string, fields: Record<string, unknown>) => {
+  /** Exécute une suite d'écritures pour une ligne, en affichant son état et l'erreur éventuelle. */
+  const run = async (id: string, job: () => Promise<void>, fallback = 'Écriture refusée') => {
     setFailure('');
     setPending(id);
     try {
-      const record = await updateRecord(TABLES.statuses, id, fields);
-      replaceAll([toStatusDef(record)]);
+      await job();
       return true;
     } catch (e) {
-      setFailure(e instanceof Error ? e.message : 'Écriture refusée');
+      setFailure(errorText(e, fallback));
       return false;
     } finally {
       setPending(null);
     }
   };
 
-  /** Échange la position de deux statuts voisins : deux écritures, l'une après l'autre. */
-  const move = async (status: StatusDef, direction: -1 | 1) => {
+  const patch = (id: string, fields: Record<string, unknown>) =>
+    run(id, async () => {
+      merge([toStatusDef(await updateRecord(TABLES.statuses, id, fields))]);
+    });
+
+  /** Échange la position de deux statuts voisins. */
+  const move = (status: StatusDef, direction: -1 | 1) => {
     const index = active.findIndex((s) => s.id === status.id);
     const other = active[index + direction];
     if (!other) return;
-    setFailure('');
-    setPending(status.id);
-    try {
-      // Des ordres égaux ou absents s'échangeraient sans effet : on repart des
-      // positions affichées, qui sont toujours distinctes.
+    // Des ordres égaux ou absents s'échangeraient sans effet : on repart des
+    // positions affichées, toujours distinctes.
+    void run(status.id, async () => {
       const a = await updateRecord(TABLES.statuses, status.id, { [STATUS.order]: index + 1 + direction });
       const b = await updateRecord(TABLES.statuses, other.id, { [STATUS.order]: index + 1 });
-      replaceAll([toStatusDef(a), toStatusDef(b)]);
-    } catch (e) {
-      setFailure(e instanceof Error ? e.message : 'Écriture refusée');
-    } finally {
-      setPending(null);
-    }
+      merge([toStatusDef(a), toStatusDef(b)]);
+    });
   };
 
-  const create = async (name: string, tone: Tone) => {
-    setFailure('');
-    setPending('new');
-    try {
-      const last = Math.max(0, ...statuses.filter((s) => s.order < Number.MAX_SAFE_INTEGER).map((s) => s.order));
-      const record = await createRecord(TABLES.statuses, {
-        [STATUS.name]: name.trim(),
-        [STATUS.tone]: tone,
-        [STATUS.order]: last + 1,
-      });
-      onChange([...statuses, toStatusDef(record)]);
-      return true;
-    } catch (e) {
-      setFailure(e instanceof Error ? e.message : 'Création refusée');
-      return false;
-    } finally {
-      setPending(null);
-    }
-  };
+  /** Un rôle n'a qu'un porteur : on le retire d'abord à celui qui l'avait. */
+  const setRole = (status: StatusDef, role: StatusRole | null) =>
+    void run(status.id, async () => {
+      const rows: StatusDef[] = [];
+      const holder = role ? statuses.find((s) => s.role === role && s.id !== status.id) : undefined;
+      if (holder) {
+        rows.push(toStatusDef(await updateRecord(TABLES.statuses, holder.id, { [STATUS.role]: null })));
+      }
+      rows.push(toStatusDef(await updateRecord(TABLES.statuses, status.id, { [STATUS.role]: role })));
+      merge(rows);
+    });
+
+  const remove = (status: StatusDef, target: StatusDef | null) =>
+    run(
+      status.id,
+      async () => {
+        // Les demandes d'abord : si la bascule échoue, rien n'est supprimé.
+        if (target) await onReassign(status.id, target);
+        await deleteRecord(TABLES.statuses, status.id);
+        onChange((prev) => prev.filter((s) => s.id !== status.id));
+      },
+      'Suppression refusée',
+    );
+
+  const create = (name: string, color: string) =>
+    run(
+      'new',
+      async () => {
+        const last = Math.max(
+          0,
+          ...statuses.filter((s) => s.order < Number.MAX_SAFE_INTEGER).map((s) => s.order),
+        );
+        const record = await createRecord(TABLES.statuses, {
+          [STATUS.name]: name.trim(),
+          [STATUS.color]: color,
+          [STATUS.order]: last + 1,
+        });
+        const created = toStatusDef(record);
+        onChange((prev) => [...prev, created]);
+      },
+      'Création refusée',
+    );
 
   const rowProps = (s: StatusDef) => ({
     status: s,
     count: usage.get(s.id) ?? 0,
+    others: active.filter((o) => o.id !== s.id),
     busy: pending === s.id,
     disabled: pending !== null && pending !== s.id,
-    confirming: confirming === s.id,
     nameProblem: (name: string) => nameProblem(name, s.id),
-    onRename: (name: string) => write(s.id, { [STATUS.name]: name.trim() }),
-    onTone: (tone: Tone) => void write(s.id, { [STATUS.tone]: tone }),
-    onAskArchive: () => setConfirming(s.id),
-    onCancelArchive: () => setConfirming(null),
-    onArchive: (value: boolean) => {
-      setConfirming(null);
-      void write(s.id, { [STATUS.archived]: value });
-    },
+    onRename: (name: string) => patch(s.id, { [STATUS.name]: name.trim() }),
+    onColor: (color: string) => void patch(s.id, { [STATUS.color]: color }),
+    onRole: (role: StatusRole | null) => setRole(s, role),
+    onArchive: (value: boolean) => void patch(s.id, { [STATUS.archived]: value }),
+    onDelete: (target: StatusDef | null) => remove(s, target),
   });
 
   return (
     <div
-      className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="modal-overlay fixed inset-0 z-[60] flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -160,7 +201,7 @@ export function StatusManagerModal({ statuses, usage, loadError, onChange, onClo
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="modal-panel flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-card bg-surface sm:rounded-card"
+        className="modal-panel flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-card bg-surface sm:rounded-card"
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div className="flex items-start gap-3">
@@ -176,8 +217,7 @@ export function StatusManagerModal({ statuses, usage, loadError, onChange, onClo
               </h2>
               <p className="text-sm text-muted">
                 Les changements s&apos;appliquent à toutes les demandes, pour tout le
-                monde. Un statut archivé quitte les menus mais reste affiché sur
-                les demandes qui le portent.
+                monde. Le nom s&apos;enregistre avec Entrée ou en quittant le champ.
               </p>
             </div>
           </div>
@@ -198,21 +238,21 @@ export function StatusManagerModal({ statuses, usage, loadError, onChange, onClo
               est celle d&apos;origine : rechargez la page avant de la modifier.
             </Callout>
           )}
-          {failure && (
-            <div aria-live="polite">
+          <div aria-live="polite">
+            {failure && (
               <Callout tone="danger" icon={AlertTriangle}>
                 <strong>Écriture refusée.</strong> {failure}
               </Callout>
-            </div>
-          )}
+            )}
+          </div>
 
           <ul className="divide-y divide-line rounded-card border border-line">
             {active.map((s, i) => (
               <StatusRow
                 key={s.id}
                 {...rowProps(s)}
-                onUp={i > 0 ? () => void move(s, -1) : undefined}
-                onDown={i < active.length - 1 ? () => void move(s, 1) : undefined}
+                onUp={i > 0 ? () => move(s, -1) : undefined}
+                onDown={i < active.length - 1 ? () => move(s, 1) : undefined}
               />
             ))}
           </ul>
@@ -244,143 +284,225 @@ export function StatusManagerModal({ statuses, usage, loadError, onChange, onClo
 
 /* ------------------------------------------------------------------ ligne */
 
+type Confirm = null | 'archive' | 'delete';
+
 function StatusRow({
   status,
   count,
+  others,
   busy,
   disabled,
-  confirming,
   nameProblem,
   onRename,
-  onTone,
+  onColor,
+  onRole,
   onUp,
   onDown,
-  onAskArchive,
-  onCancelArchive,
   onArchive,
+  onDelete,
 }: {
   status: StatusDef;
   count: number;
+  /** Statuts actifs vers lesquels basculer les demandes avant une suppression. */
+  others: StatusDef[];
   busy: boolean;
   disabled: boolean;
-  confirming: boolean;
   nameProblem: (name: string) => string;
   onRename: (name: string) => Promise<boolean>;
-  onTone: (tone: Tone) => void;
+  onColor: (color: string) => void;
+  onRole: (role: StatusRole | null) => void;
   onUp?: () => void;
   onDown?: () => void;
-  onAskArchive: () => void;
-  onCancelArchive: () => void;
   onArchive: (value: boolean) => void;
+  onDelete: (target: StatusDef | null) => Promise<boolean>;
 }) {
   const inputId = useId();
+  const roleId = useId();
   const [draft, setDraft] = useState(status.name);
-  const [touched, setTouched] = useState(false);
-  const problem = touched ? nameProblem(draft) : '';
-  const system = status.role !== null;
+  const [editing, setEditing] = useState(false);
+  const [confirm, setConfirm] = useState<Confirm>(null);
+  const [target, setTarget] = useState('');
+  const problem = editing ? nameProblem(draft) : '';
   const locked = busy || disabled;
 
   // Le brouillon suit le nom enregistré tant qu'on ne l'édite pas.
-  if (!touched && draft !== status.name) setDraft(status.name);
+  if (!editing && draft !== status.name) setDraft(status.name);
 
   const commit = async () => {
+    if (!editing) return;
     if (draft.trim() === status.name) {
-      setTouched(false);
-      setDraft(status.name);
+      setEditing(false);
       return;
     }
     if (nameProblem(draft)) return;
-    if (await onRename(draft)) setTouched(false);
+    if (await onRename(draft)) setEditing(false);
   };
 
+  const targetStatus = others.find((o) => o.id === target) ?? null;
+
   return (
-    <li className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <div className="w-36 shrink-0">
-        <StatusBadge status={{ ...status, name: draft.trim() || status.name }} />
+    <li className="space-y-3 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="w-36 shrink-0">
+          <StatusBadge status={{ ...status, name: draft.trim() || status.name }} />
+        </div>
+
+        <div className="min-w-[10rem] flex-1">
+          <label htmlFor={inputId} className="sr-only">
+            Nom du statut {status.name}
+          </label>
+          <input
+            id={inputId}
+            className="field"
+            value={draft}
+            readOnly={locked}
+            aria-invalid={problem ? true : undefined}
+            aria-describedby={problem ? `${inputId}-err` : undefined}
+            onChange={(e) => {
+              setEditing(true);
+              setDraft(e.target.value);
+            }}
+            onBlur={() => void commit()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void commit();
+              }
+              if (e.key === 'Escape' && editing) {
+                // Annule l'édition sans fermer la fenêtre.
+                e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
+                setEditing(false);
+                setDraft(status.name);
+              }
+            }}
+          />
+          {problem && (
+            <p id={`${inputId}-err`} className="mt-1 text-xs text-danger">
+              {problem}
+            </p>
+          )}
+        </div>
+
+        <span className="w-24 shrink-0 text-right text-xs tabular-nums text-muted">
+          {count} demande{count > 1 ? 's' : ''}
+        </span>
+
+        <div className="flex shrink-0 items-center gap-1">
+          {!status.archived && (
+            <>
+              <IconButton icon={ArrowUp} label={`Monter ${status.name}`} onClick={onUp} disabled={locked || !onUp} />
+              <IconButton icon={ArrowDown} label={`Descendre ${status.name}`} onClick={onDown} disabled={locked || !onDown} />
+            </>
+          )}
+          {busy ? (
+            <Loader2 className="mx-2 h-[18px] w-[18px] animate-spin text-muted" strokeWidth={2} aria-label="Enregistrement…" />
+          ) : status.archived ? (
+            <SecondaryButton icon={ArchiveRestore} disabled={disabled} onClick={() => onArchive(false)}>
+              Restaurer
+            </SecondaryButton>
+          ) : (
+            <IconButton
+              icon={Archive}
+              label={`Archiver ${status.name}`}
+              onClick={() => setConfirm('archive')}
+              disabled={locked}
+            />
+          )}
+          {!busy && (
+            <IconButton
+              icon={Trash2}
+              label={`Supprimer ${status.name}`}
+              tone="danger"
+              onClick={() => {
+                setTarget('');
+                setConfirm('delete');
+              }}
+              disabled={locked}
+            />
+          )}
+        </div>
       </div>
 
-      <div className="min-w-[10rem] flex-1">
-        <label htmlFor={inputId} className="sr-only">
-          Nom du statut {status.name}
-        </label>
-        <input
-          id={inputId}
-          className="field"
-          value={draft}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 sm:pl-[9.75rem]">
+        <ColorPicker
+          value={status.color}
           disabled={locked}
-          aria-invalid={problem ? true : undefined}
-          aria-describedby={problem ? `${inputId}-err` : undefined}
-          onChange={(e) => {
-            setTouched(true);
-            setDraft(e.target.value);
-          }}
-          onBlur={() => void commit()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void commit();
-            if (e.key === 'Escape' && touched) {
-              // Annule l'édition sans fermer la fenêtre.
-              e.stopPropagation();
-              setTouched(false);
-              setDraft(status.name);
-            }
-          }}
+          label={`Couleur du statut ${status.name}`}
+          onChange={onColor}
         />
-        {problem && (
-          <p id={`${inputId}-err`} className="mt-1 text-xs text-danger">
-            {problem}
-          </p>
-        )}
-      </div>
-
-      <ToneSwatches
-        value={status.tone}
-        disabled={locked}
-        label={`Couleur du statut ${status.name}`}
-        onChange={onTone}
-      />
-
-      <span className="w-24 shrink-0 text-right text-xs tabular-nums text-muted">
-        {count} demande{count > 1 ? 's' : ''}
-      </span>
-
-      <div className="flex shrink-0 items-center gap-1">
-        {!status.archived && (
-          <>
-            <IconButton icon={ArrowUp} label={`Monter ${status.name}`} onClick={onUp} disabled={locked || !onUp} />
-            <IconButton icon={ArrowDown} label={`Descendre ${status.name}`} onClick={onDown} disabled={locked || !onDown} />
-          </>
-        )}
-
-        {busy ? (
-          <Loader2 className="mx-2 h-[18px] w-[18px] animate-spin text-muted" strokeWidth={2} aria-label="Enregistrement…" />
-        ) : status.archived ? (
-          <SecondaryButton icon={ArchiveRestore} disabled={disabled} onClick={() => onArchive(false)}>
-            Restaurer
-          </SecondaryButton>
-        ) : system ? (
-          // Statut système : pas d'archivage, et l'écran dit pourquoi plutôt
-          // que de présenter un bouton désactivé muet.
-          <span
-            className="inline-flex items-center gap-1.5 px-2 text-xs text-muted"
-            title="Utilisé par les indicateurs, l'archivage des doublons et les nouvelles demandes"
+        <div className="flex items-center gap-2">
+          <label htmlFor={roleId} className="text-xs font-medium text-muted">
+            Rôle
+          </label>
+          <select
+            id={roleId}
+            className="field w-auto py-1 text-xs"
+            value={status.role ?? ''}
+            disabled={locked}
+            onChange={(e) => onRole((e.target.value || null) as StatusRole | null)}
           >
-            <Lock className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-            Statut système
-          </span>
-        ) : confirming ? (
-          <span className="inline-flex items-center gap-1">
-            <span className="text-xs font-medium text-ink">
-              Archiver{count ? ` (${count} demande${count > 1 ? 's' : ''} le gardent)` : ''} ?
-            </span>
-            <IconButton icon={Check} label="Confirmer l'archivage" onClick={() => onArchive(true)} tone="danger" />
-            <IconButton icon={X} label="Annuler" onClick={onCancelArchive} />
-          </span>
-        ) : (
-          <SecondaryButton icon={Archive} disabled={disabled} onClick={onAskArchive}>
-            Archiver
-          </SecondaryButton>
-        )}
+            <option value="">Aucun</option>
+            {STATUS_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABEL[r]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
+
+      {confirm === 'archive' && (
+        <ConfirmBar
+          tone="amber"
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            setConfirm(null);
+            onArchive(true);
+          }}
+          confirmLabel="Archiver"
+        >
+          Archiver « {status.name} » ? Il quitte les menus de saisie
+          {count ? ` ; ${count} demande${count > 1 ? 's le gardent' : ' le garde'}` : ''}.
+          {status.role && ` Son rôle « ${ROLE_LABEL[status.role].split(' —')[0]} » reste actif.`}
+        </ConfirmBar>
+      )}
+
+      {confirm === 'delete' && (
+        <ConfirmBar
+          tone="danger"
+          onCancel={() => setConfirm(null)}
+          onConfirm={async () => {
+            if (await onDelete(targetStatus)) setConfirm(null);
+          }}
+          confirmLabel="Supprimer"
+          confirmDisabled={count > 0 && !targetStatus}
+        >
+          <span className="block">
+            Supprimer définitivement « {status.name} » ?
+            {status.role && ` La règle « ${ROLE_LABEL[status.role].split(' —')[0]} » ne s’appliquera plus tant qu’aucun autre statut ne la reprend.`}
+          </span>
+          {count > 0 && (
+            <label className="mt-2 flex flex-wrap items-center gap-2">
+              <span>
+                {count} demande{count > 1 ? 's le portent' : ' le porte'} : basculer vers
+              </span>
+              <select
+                className="field w-auto py-1 text-xs"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+              >
+                <option value="">— choisir un statut —</option>
+                {others.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </ConfirmBar>
+      )}
     </li>
   );
 }
@@ -396,19 +518,19 @@ function NewStatusRow({
   busy: boolean;
   disabled: boolean;
   nameProblem: (name: string) => string;
-  onCreate: (name: string, tone: Tone) => Promise<boolean>;
+  onCreate: (name: string, color: string) => Promise<boolean>;
 }) {
   const inputId = useId();
   const [name, setName] = useState('');
-  const [tone, setTone] = useState<Tone>('neutral');
+  const [color, setColor] = useState(FALLBACK_COLOR);
   const problem = name ? nameProblem(name) : '';
   const valid = Boolean(name.trim()) && !problem;
 
   const submit = async () => {
     if (!valid) return;
-    if (await onCreate(name, tone)) {
+    if (await onCreate(name, color)) {
       setName('');
-      setTone('neutral');
+      setColor(FALLBACK_COLOR);
     }
   };
 
@@ -425,12 +547,15 @@ function NewStatusRow({
             className="field"
             placeholder="Nom du statut, ex. « Rendez-vous fixé »"
             value={name}
-            disabled={busy || disabled}
+            readOnly={busy || disabled}
             aria-invalid={problem ? true : undefined}
             aria-describedby={problem ? `${inputId}-err` : undefined}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void submit();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void submit();
+              }
             }}
           />
           {problem && (
@@ -439,12 +564,12 @@ function NewStatusRow({
             </p>
           )}
         </div>
-        <ToneSwatches value={tone} disabled={busy || disabled} label="Couleur du nouveau statut" onChange={setTone} />
         <PrimaryButton busy={busy} disabled={!valid || disabled} onClick={() => void submit()}>
           <Plus className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
           Ajouter
         </PrimaryButton>
       </div>
+      <ColorPicker value={color} disabled={busy || disabled} label="Couleur du nouveau statut" onChange={setColor} />
     </div>
   );
 }
@@ -452,45 +577,150 @@ function NewStatusRow({
 /* ---------------------------------------------------------------- primitives */
 
 /**
- * Palette fermée des tons de la charte, en boutons radio.
- *
- * Chaque pastille porte l'icône du ton et son nom en libellé accessible : le
- * choix ne repose jamais sur la seule perception de la couleur.
+ * Couleur **libre** : un sélecteur natif (n'importe quelle teinte) et un champ
+ * hexadécimal, plus les couleurs de la charte en raccourci. La pastille du
+ * statut en est dérivée (`statusChipStyle`) et le nom est toujours écrit : le
+ * sens ne repose jamais sur la seule couleur.
  */
-function ToneSwatches({
+function ColorPicker({
   value,
   disabled,
   label,
   onChange,
 }: {
-  value: Tone;
+  value: string;
   disabled: boolean;
   label: string;
-  onChange: (tone: Tone) => void;
+  onChange: (color: string) => void;
+}) {
+  const hexId = useId();
+  const [hex, setHex] = useState(value);
+  const [editing, setEditing] = useState(false);
+  const [preview, setPreview] = useState(value);
+  if (!editing && hex !== value) setHex(value);
+
+  // React relaie l'événement `input` du sélecteur natif sous le nom
+  // `onChange` : une valeur par mouvement de souris, donc une écriture par
+  // pixel. Le vrai `change` — émis à la fermeture du sélecteur — n'est
+  // accessible qu'en natif.
+  const nativeRef = useRef<HTMLInputElement>(null);
+  const latest = useRef({ value, onChange });
+  latest.current = { value, onChange };
+  useEffect(() => {
+    const el = nativeRef.current;
+    if (!el) return;
+    const commit = () => {
+      const next = normaliseHex(el.value);
+      if (next && next !== latest.current.value) latest.current.onChange(next);
+    };
+    el.addEventListener('change', commit);
+    return () => el.removeEventListener('change', commit);
+  }, []);
+  useEffect(() => setPreview(value), [value]);
+
+  const commitHex = () => {
+    setEditing(false);
+    const next = normaliseHex(hex);
+    if (next && next !== value) onChange(next);
+    else setHex(value);
+  };
+
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium text-muted">Couleur</span>
+      <input
+        ref={nativeRef}
+        type="color"
+        value={preview}
+        disabled={disabled}
+        aria-label={`${label} — sélecteur libre`}
+        // Aperçu local pendant le choix ; l'écriture attend la fermeture du
+        // sélecteur (événement natif `change`, branché plus haut).
+        onChange={(e) => setPreview(e.target.value)}
+        className="h-7 w-9 cursor-pointer rounded-control border border-line bg-surface p-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+      />
+      <label htmlFor={hexId} className="sr-only">
+        {label} — code hexadécimal
+      </label>
+      <input
+        id={hexId}
+        className="field w-24 py-1 font-mono text-xs"
+        value={hex}
+        readOnly={disabled}
+        spellCheck={false}
+        onChange={(e) => {
+          setEditing(true);
+          setHex(e.target.value);
+        }}
+        onBlur={commitHex}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commitHex();
+          }
+        }}
+      />
+      <span className="flex items-center gap-1">
+        {STATUS_COLOR_PRESETS.map((p) => {
+          const checked = p.color === value;
+          return (
+            <button
+              key={p.color}
+              type="button"
+              aria-label={`${p.label}${checked ? ' (actuelle)' : ''}`}
+              aria-pressed={checked}
+              title={p.label}
+              disabled={disabled}
+              onClick={() => !checked && onChange(p.color)}
+              className={`h-5 w-5 rounded-full transition-shadow focus-visible:shadow-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                checked ? 'ring-2 ring-ink ring-offset-1 ring-offset-surface' : ''
+              }`}
+              style={{ backgroundColor: p.color }}
+            />
+          );
+        })}
+      </span>
+    </div>
+  );
+}
+
+function ConfirmBar({
+  tone,
+  children,
+  confirmLabel,
+  confirmDisabled,
+  onConfirm,
+  onCancel,
+}: {
+  tone: 'amber' | 'danger';
+  children: React.ReactNode;
+  confirmLabel: string;
+  confirmDisabled?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex shrink-0 items-center gap-1">
-      {TONES.map(({ tone, label: toneLabel }) => {
-        const Icon = TONE_ICON[tone];
-        const checked = tone === value;
-        return (
-          <button
-            key={tone}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            aria-label={toneLabel}
-            title={toneLabel}
-            disabled={disabled}
-            onClick={() => !checked && onChange(tone)}
-            className={`flex h-7 w-7 items-center justify-center rounded-full transition-shadow focus-visible:shadow-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${TONE_ACCENT[tone]} ${
-              checked ? 'ring-2 ring-ink ring-offset-1 ring-offset-surface' : ''
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-          </button>
-        );
-      })}
+    <div
+      role="alertdialog"
+      aria-label={`Confirmer : ${confirmLabel.toLowerCase()}`}
+      className={`flex flex-wrap items-center justify-between gap-3 rounded-control border px-3 py-2.5 text-xs ${
+        tone === 'danger'
+          ? 'border-danger-border bg-danger-bg text-danger'
+          : 'border-amber-border bg-amber-bg text-amber'
+      }`}
+    >
+      <div className="min-w-0 flex-1">{children}</div>
+      <div className="flex shrink-0 items-center gap-2">
+        <SecondaryButton onClick={onCancel}>Annuler</SecondaryButton>
+        <SecondaryButton
+          tone={tone === 'danger' ? 'danger' : 'default'}
+          icon={Check}
+          disabled={confirmDisabled}
+          onClick={onConfirm}
+        >
+          {confirmLabel}
+        </SecondaryButton>
+      </div>
     </div>
   );
 }

@@ -36,7 +36,7 @@ import {
 } from './_lib/typeform.js';
 // Les identifiants de champs viennent du schéma partagé : une seule
 // définition pour le front et pour le webhook.
-import { CONTACT, DEFAULT_STATUSES, FIELD_NAMES, TABLES } from '../src/lib/schema.js';
+import { CONTACT, FIELD_NAMES, TABLES } from '../src/lib/schema.js';
 
 interface WebhookPayload {
   event_id?: string;
@@ -66,8 +66,6 @@ const FORM_LABEL: Record<string, string> = {
   [TYPEFORM_FORMS.MAR26]: 'gbPj3B1m (MAR26)',
   [TYPEFORM_FORMS.SEP26]: 'EIgYmzF7 (SEP26)',
 };
-
-const NEW_STATUS_ID = DEFAULT_STATUSES.find((s) => s.role === 'nouveau')!.id;
 
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), {
@@ -274,10 +272,13 @@ export async function POST(req: Request): Promise<Response> {
   // commercial à chaque réémission du webhook.
   const isNew = !(await exists(responseId));
   if (isNew) {
-    // Lien vers le statut de rôle « nouveau », par son identifiant : il
-    // survit à un renommage, et la ligne ne peut être ni supprimée (le proxy
-    // refuse) ni archivée (statut système) depuis l'app.
-    fields[CONTACT.statusLink] = [NEW_STATUS_ID];
+    // Lien vers le statut qui porte le rôle « nouveau », cherché à chaque
+    // création : les admins peuvent renommer, déplacer ce rôle ou supprimer
+    // le statut. Aucun ne le porte → pas de statut, plutôt qu'un lien vers
+    // une ligne disparue qui ferait échouer l'écriture — et Typeform
+    // réémettrait la livraison en boucle.
+    const newStatus = await newStatusId();
+    if (newStatus) fields[CONTACT.statusLink] = [newStatus];
     fields[CONTACT.priority] = defaultPriority(requesterType);
   }
 
@@ -310,4 +311,23 @@ async function exists(responseId: string): Promise<boolean> {
   if (!res.ok) return false; // en cas de doute, on traite comme une création
   const body = (await res.json()) as { records?: unknown[] };
   return (body.records?.length ?? 0) > 0;
+}
+
+/** Le statut qui porte le rôle « nouveau », ou `null` si aucun — ou si la table ne répond pas. */
+async function newStatusId(): Promise<string | null> {
+  const baseId = process.env.AIRTABLE_BASE_ID ?? 'appYjCP9BUY8Zj5Ni';
+  const params = new URLSearchParams({
+    pageSize: '1',
+    filterByFormula: `{${FIELD_NAMES.statusRole}} = 'nouveau'`,
+  });
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${baseId}/${TABLES.statuses}?${params}`, {
+      headers: { Authorization: `Bearer ${process.env.AIRTABLE_TOKEN ?? ''}` },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { records?: Array<{ id?: string }> };
+    return body.records?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
 }

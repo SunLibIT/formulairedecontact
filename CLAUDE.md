@@ -454,41 +454,54 @@ single column); `upload-to-airtable.py` loads them with an idempotent upsert on
 ### Editable statuses
 
 Since 2026-10-07 statuses live in the **Statuts** table (`tblipMIYgKRdFOI3y`, same base —
-a link field can only point inside its base): `Nom`, `Ton`, `Ordre`, `Archivé`, `Rôle`.
-Admins add, rename, recolour, reorder and archive them from the app
+a link field can only point inside its base): `Nom`, `Couleur` (free `#rrggbb`), `Ordre`,
+`Archivé`, `Rôle`, plus the legacy `Ton` read only when `Couleur` is empty. Admins add,
+rename, recolour, reorder, re-role, archive **and delete** any of them from the app
 (`StatusManagerModal`, opened by the gear next to the record's Statut select or from the
-account menu). The old hardcoded `STATUSES` / `STATUS_TONE` are gone.
+account menu). Nothing is locked: there is no « system » status, by product decision.
 
 - **A lead's status is a link**, `Statut (lien)` — `CONTACT.statusLink` / `LEAD.statusLink`.
   Renaming a status rewrites no lead. The old single select (`statusLegacy`) is **read
   only**: never written again, read as a fallback while a lead has no link.
 - **Never recognise a status by its name.** It changes. Filters and counters key on the
-  status **id**; business rules (KPI rates, archiving, stat tiles, « Hors critères »
-  button, Typeform creation) key on its **role** (`StatusRole`, the `Rôle` column).
-  `statusForRole` never returns undefined: it falls back to `DEFAULT_STATUSES`.
-- **`DEFAULT_STATUSES` holds the seven original statuses with their real record ids.**
-  Two jobs: fallback registry if the table fails to load, and the bridge for legacy
-  labels — a lead still on the old select resolves through the *original* label, then
-  by id in the live registry, so it survives a rename (`resolveStatus`).
-- **Role statuses cannot be archived** from the UI (« Statut système »). Archiving
-  « Nouveau » would remove from the menus the status every incoming request lands in, and
-  the webhook writes its id (`NEW_STATUS_ID`). Custom statuses have `role: null`: shown,
-  filtered and counted, but no rule hooks onto them — they count as neither kept nor
-  rejected in the qualification rate.
-- **Archive, never delete.** The proxy answers 405 to any `DELETE` on Statuts. An archived
-  status leaves the input menus but still shows on leads carrying it (« · archivé »), and
-  stays in the menu of a lead that carries it so saving does not rewrite it silently.
+  status **id**; business rules key on its **role** (`StatusRole`, the `Rôle` column):
+  entry status, archiving, the three stat tiles, the « Hors critères » button, KPI rates.
+- **Roles are movable and optional.** One holder per role — assigning it to a status
+  first clears it from the previous holder. `statusForRole` returns `undefined` when no
+  status holds a role, and every rule then goes quiet rather than breaking: the tile and
+  the button disappear, KPI counts read 0, archiving throws `requireRole`'s actionable
+  message, a lead with nothing resolves to `NO_STATUS` (« Sans statut », counted unknown).
+- **The Typeform webhook looks the entry status up at run time** (`{Rôle} = 'nouveau'`,
+  hence `FIELD_NAMES.statusRole`). Never hardcode its id: a link to a deleted row makes the
+  write fail, and Typeform redelivers forever. No holder → the request is created without
+  a status.
+- **Deleting a status used by requests requires a target.** The dialog asks where to move
+  them; `reassignStatus` in `App.tsx` rewrites their link (both tables, batched), and the
+  row is deleted **only if every write succeeded**. A request never ends up without a
+  status through a deletion.
+- **`resolveStatus` trusts the registry it is given, nothing else.** `DEFAULT_STATUSES`
+  (the seven originals, real ids) is the registry only when the table failed to load, and
+  the bridge from legacy labels to ids. It must not resurrect a deleted status: a legacy
+  label whose status is gone shows as unknown.
+- **Colours are free, so chips are derived.** `statusChipStyle` mixes the colour with
+  `--surface` / `--ink` (`color-mix`), which keeps it readable in dark mode with a single
+  stored value. The name is always written next to the dot: meaning never rests on colour.
+  The native colour input writes on its `change` event only — React's `onChange` there is
+  the per-pixel `input` event.
 - **Writes go through `requireAdmin`** (`api/_lib/auth.ts`): Google session **and** an
-  active RH member of `ADMIN_GROUPS` (Direction, Administratif). Stricter than
-  `requireWriter`: the historic no-Google regime lets every write through, but here it is
-  refused — « admins only » means nothing without a proven identity. The client mirrors it
-  with `auth.isAdmin` (only to hide buttons; the server is the gate).
-- **Renames propagate in place.** `useStatuses` caches the table like the sectorisation;
-  `useLeads` re-resolves loaded leads with `withStatuses` when the registry changes, rather
-  than re-normalising raw records, which would drop local patches. A status patch must
-  therefore carry `statusLinkId` — use `statusWrite`, which returns fields and local patch
-  together.
+  active RH member of `ADMIN_GROUPS` (Direction, Administratif) — creation, update and
+  deletion alike. Stricter than `requireWriter`: the historic no-Google regime is refused,
+  since « admins only » means nothing without a proven identity. `auth.isAdmin` on the
+  client only hides buttons.
+- **Registry updates are functional.** `useStatuses().update` takes `prev => next`; two
+  writes finishing back to back would otherwise both start from the same stale list and
+  the second would erase the first on screen. `useLeads` re-resolves loaded leads with
+  `withStatuses` when the registry changes; a status patch must carry `statusLinkId`, which
+  `statusWrite` guarantees.
+- **Stacked dialogs.** The status dialog opens over the record dialog, so it renders after
+  it at `z-[60]`, and `useDialog` only reacts (Escape, Tab trap) when its dialog is the top
+  one. `useDialog` reads `onClose` through a ref: as an effect dependency, an inline arrow
+  re-ran the effect on every parent render and pulled focus out of the field being typed.
 - **Backfill.** Leads created before 2026-10-07 have no link until someone saves them (the
   record dialog always rewrites the link). The legacy fallback makes that invisible. A
-  one-off backfill of `Statut (lien)` from the old select, matching on the original labels,
-  would let the old field be removed.
+  one-off backfill of `Statut (lien)` from the old select would let the old field go.

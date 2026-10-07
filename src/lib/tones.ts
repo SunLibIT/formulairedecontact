@@ -29,6 +29,7 @@ import {
   Sparkle,
   type LucideIcon,
 } from 'lucide-react';
+import type { CSSProperties } from 'react';
 import type { Tone } from './schema';
 
 /** Pastille complète : fond, texte et bordure. */
@@ -80,3 +81,29 @@ export const TONE_ICON: Record<Tone, LucideIcon> = {
   signed: FileSignature,
   rejected: AlertTriangle,
 };
+
+/* ---------------------------------------------------------- statuts libres */
+
+/**
+ * Pastille d'un statut à couleur libre.
+ *
+ * Depuis que les admins choisissent n'importe quelle couleur, la pastille ne
+ * peut plus venir d'une classe écrite d'avance. Elle est **dérivée** de la
+ * couleur, par mélange avec la surface et l'encre de la page : fond très
+ * clair, bordure intermédiaire, texte tiré vers l'encre. Comme `--surface` et
+ * `--ink` s'inversent en mode sombre, la même couleur reste lisible des deux
+ * côtés sans seconde valeur à saisir.
+ */
+export function statusChipStyle(color: string): CSSProperties {
+  return {
+    backgroundColor: `color-mix(in srgb, ${color} 14%, var(--surface))`,
+    borderColor: `color-mix(in srgb, ${color} 40%, var(--surface))`,
+    color: `color-mix(in srgb, ${color} 72%, var(--ink))`,
+  };
+}
+
+/** Pastille d'icône d'une tuile de statut : fond et texte, sans bordure. */
+export function statusAccentStyle(color: string): CSSProperties {
+  const { backgroundColor, color: text } = statusChipStyle(color);
+  return { backgroundColor, color: text };
+}

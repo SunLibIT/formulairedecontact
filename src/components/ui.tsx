@@ -36,7 +36,8 @@ import {
   type Tone,
 } from '../lib/schema';
 import type { DuplicateNote } from '../lib/leadActions';
-import { TONE_ACCENT, TONE_CLASS, TONE_ICON } from '../lib/tones';
+import { TONE_ACCENT, TONE_CLASS, TONE_ICON, statusAccentStyle } from '../lib/tones';
+import { statusChipStyle } from '../lib/tones';
 
 /* ------------------------------------------------------------------ badges */
 
@@ -51,18 +52,19 @@ export function StatusBadge({
   /** Version resserrée, pour une ligne de liste dense. */
   compact?: boolean;
 }) {
-  const tone = status.tone;
-  const Icon = TONE_ICON[tone];
+  // Couleur libre, choisie par un admin : la pastille en est dérivée
+  // (`statusChipStyle`). Le sens ne repose pas sur elle — le nom est écrit.
   return (
     <span
-      className={`inline-flex max-w-full items-center gap-1 rounded-full border font-semibold ${TONE_CLASS[tone]} ${
+      className={`inline-flex max-w-full items-center gap-1 rounded-full border font-semibold ${
         compact ? 'px-1.5 py-0.5 text-[11px]' : 'gap-1.5 px-2.5 py-0.5 text-xs'
       }`}
+      style={statusChipStyle(status.color)}
     >
-      <Icon
-        className={compact ? 'h-3 w-3 shrink-0' : 'h-3.5 w-3.5 shrink-0'}
-        strokeWidth={2}
+      <span
         aria-hidden="true"
+        className={`shrink-0 rounded-full ${compact ? 'h-1.5 w-1.5' : 'h-2 w-2'}`}
+        style={{ backgroundColor: status.color }}
       />
       <span className="truncate">{status.name}</span>
       {/* Un statut retiré des menus par un admin reste affiché sur les demandes
@@ -72,6 +74,15 @@ export function StatusBadge({
         <span className="shrink-0 font-normal opacity-80">· archivé</span>
       )}
     </span>
+  );
+}
+
+/** Pastille pleine, à la place d'une icône de ton pour un statut à couleur libre. */
+function StatusDot({ className }: { className?: string; strokeWidth?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="6" fill="currentColor" />
+    </svg>
   );
 }
 
@@ -224,6 +235,7 @@ export function StatTile({
   icon,
   hint,
   tone = 'neutral',
+  color,
   active = false,
   onClick,
 }: {
@@ -239,10 +251,13 @@ export function StatTile({
   hint?: string;
   /** Reprend le code couleur du statut que la tuile compte. */
   tone?: Tone;
+  /** Couleur libre d'un statut — prime sur `tone`, et l'icône devient une pastille. */
+  color?: string;
   active?: boolean;
   onClick?: () => void;
 }) {
-  const Icon = icon ?? TONE_ICON[tone];
+  const Icon = icon ?? (color ? StatusDot : TONE_ICON[tone]);
+  const accent = color ? statusAccentStyle(color) : undefined;
   const interactive = Boolean(onClick);
   return (
     <button
@@ -253,8 +268,9 @@ export function StatTile({
       // Une tuile sélectionnée s'affirme par le fond teinté de son propre ton,
       // jamais par une bordure — la charte l'interdit explicitement.
       className={`flex w-full items-center justify-between gap-3 rounded-card border border-line p-4 text-left transition-colors ${
-        active ? TONE_ACCENT[tone] : 'bg-surface ' + (interactive ? 'hover:bg-canvas' : '')
+        active ? (accent ? '' : TONE_ACCENT[tone]) : 'bg-surface ' + (interactive ? 'hover:bg-canvas' : '')
       } ${interactive ? 'cursor-pointer' : 'cursor-default'}`}
+      style={active ? accent : undefined}
     >
       <div className="min-w-0">
         <p className="truncate text-sm font-medium opacity-80">{label}</p>
@@ -264,8 +280,9 @@ export function StatTile({
       </div>
       <span
         className={`shrink-0 rounded-control p-2.5 ${
-          active ? 'bg-surface' : TONE_ACCENT[tone]
+          active ? 'bg-surface' : accent ? '' : TONE_ACCENT[tone]
         }`}
+        style={!active ? accent : accent ? { color: accent.color } : undefined}
       >
         <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden="true" />
       </span>

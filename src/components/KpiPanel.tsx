@@ -100,7 +100,7 @@ export function KpiPanel({
       orderedCounts(summary.byStatus).map(({ status, count }) => ({
         label: status.name,
         value: count,
-        tone: status.tone,
+        color: status.color,
       })),
     [summary],
   );
@@ -229,7 +229,7 @@ export function KpiPanel({
             <StatTile
               label="À traiter"
               value={summary.untouched}
-              tone={fresh.tone}
+              color={fresh?.color}
               hint={
                 summary.medianUntouchedAge != null
                   ? `ancienneté médiane ${summary.medianUntouchedAge} j`
@@ -278,7 +278,7 @@ export function KpiPanel({
               tone="fresh"
               hint={`${
                 current.length - summary.unknownStatus - summary.untouched
-              } demandes sorties de « ${fresh.name} » sur ${current.length - summary.unknownStatus}`}
+              } demandes sorties de « ${fresh?.name ?? 'Nouveau'} » sur ${current.length - summary.unknownStatus}`}
             />
           </div>
 

@@ -86,6 +86,8 @@ export const FIELD_NAMES = {
   contactResponseId: 'Response ID',
   /** Requis par `api/_lib/auth.ts` pour retrouver un collaborateur par email. */
   staffEmail: 'Email',
+  /** Requis par le webhook Typeform pour trouver le statut des nouvelles demandes. */
+  statusRole: 'Rôle',
 } as const;
 
 /** Champs de la table « Leads Solaires ». */
@@ -186,6 +188,9 @@ export const STAFF = {
 /** Champs de la table « Statuts ». */
 export const STATUS = {
   name: 'fldFWdsjqWBE2qQrq',
+  /** Couleur libre, `#rrggbb`. Fait foi depuis le 2026-10-07. */
+  color: 'fldQSu5OPIBixDQ0s',
+  /** Ancien ton de palette fermée, relu seulement si `color` est vide. */
   tone: 'flduCvbXs319FEamn',
   order: 'fldNrYviRBYPP19BB',
   archived: 'fldX3FzdPGxGBPLlw',
@@ -216,12 +221,29 @@ export const STATUS_ROLES = [
 ] as const;
 export type StatusRole = (typeof STATUS_ROLES)[number];
 
+/**
+ * Ce que chaque rôle déclenche, dit à l'admin qui l'attribue. Un rôle se
+ * porte par **un seul** statut à la fois ; aucun n'est figé — un admin peut
+ * le déplacer, ou supprimer le statut qui le porte, et la règle qui en
+ * dépend se tait jusqu'à ce qu'un autre statut le reprenne.
+ */
+export const ROLE_LABEL: Record<StatusRole, string> = {
+  nouveau: 'Entrée — statut des nouvelles demandes',
+  a_contacter: 'À contacter — tuile de compteur',
+  qualifie: 'Qualifié — taux de qualification',
+  signe: 'Signé — taux de qualification',
+  a_relancer: 'À relancer',
+  hors_criteres: 'Hors critères — bouton de la fiche, taux',
+  archive: 'Archivage — doublons, masqué des listes',
+};
+
 /** Un statut de suivi, tel que lu dans la table Statuts. */
 export interface StatusDef {
   /** Identifiant de l'enregistrement Statuts — c'est lui qu'on écrit dans le lien. */
   id: string;
   name: string;
-  tone: Tone;
+  /** Couleur libre, `#rrggbb`. Rendue par `statusChipStyle` (`lib/tones.ts`). */
+  color: string;
   /** Position dans le pipeline : ordonne les menus et le tri par statut. */
   order: number;
   /** Retiré des menus de saisie, mais toujours affiché sur les leads qui le portent. */
@@ -245,13 +267,13 @@ export interface StatusDef {
  * le libellé dans la table vivante échouerait dès le premier renommage.
  */
 export const DEFAULT_STATUSES: readonly StatusDef[] = [
-  { id: 'recx6eyiNYcJCctd2', name: 'Nouveau', tone: 'fresh', order: 1, archived: false, role: 'nouveau' },
-  { id: 'recLTpAsBorbb5Gp0', name: 'A contacter', tone: 'action', order: 2, archived: false, role: 'a_contacter' },
-  { id: 'recfDmm8lMvcPffx2', name: 'Qualifié', tone: 'qualified', order: 3, archived: false, role: 'qualifie' },
-  { id: 'recpZ8sPXDL5w8yFZ', name: 'Signé', tone: 'signed', order: 4, archived: false, role: 'signe' },
-  { id: 'rech6xrIebR7phhiF', name: 'A relancer', tone: 'followup', order: 5, archived: false, role: 'a_relancer' },
-  { id: 'recVPeBFtLQYATCR7', name: 'Hors Critères', tone: 'rejected', order: 6, archived: false, role: 'hors_criteres' },
-  { id: 'recWlsoKQyl6Er9Wh', name: 'Archivé', tone: 'neutral', order: 7, archived: false, role: 'archive' },
+  { id: 'recx6eyiNYcJCctd2', name: 'Nouveau', color: '#3cae68', order: 1, archived: false, role: 'nouveau' },
+  { id: 'recLTpAsBorbb5Gp0', name: 'A contacter', color: '#d97706', order: 2, archived: false, role: 'a_contacter' },
+  { id: 'recfDmm8lMvcPffx2', name: 'Qualifié', color: '#1d4ed8', order: 3, archived: false, role: 'qualifie' },
+  { id: 'recpZ8sPXDL5w8yFZ', name: 'Signé', color: '#6d28d9', order: 4, archived: false, role: 'signe' },
+  { id: 'rech6xrIebR7phhiF', name: 'A relancer', color: '#b45309', order: 5, archived: false, role: 'a_relancer' },
+  { id: 'recVPeBFtLQYATCR7', name: 'Hors Critères', color: '#b91c1c', order: 6, archived: false, role: 'hors_criteres' },
+  { id: 'recWlsoKQyl6Er9Wh', name: 'Archivé', color: '#5b6472', order: 7, archived: false, role: 'archive' },
 ];
 
 export const PRIORITIES = ['Basse', 'Moyenne', 'Haute'] as const;
@@ -309,21 +331,33 @@ export type Tone =
   | 'rejected';
 
 /**
- * Les tons proposés au choix d'un admin, dans l'ordre du sélecteur.
- *
- * Une palette **fermée** plutôt qu'une couleur libre : chaque ton a son icône
- * et des valeurs vérifiées en contraste, en clair comme en sombre. Une couleur
- * hexadécimale saisie à la main ne garantirait ni l'un ni l'autre.
+ * Couleurs proposées en raccourci dans le sélecteur — celles de la charte,
+ * contrastées en clair comme en sombre. Le choix reste **libre** : le
+ * sélecteur accepte n'importe quelle couleur, ces pastilles n'en sont qu'un
+ * point de départ.
  */
-export const TONES: ReadonlyArray<{ tone: Tone; label: string }> = [
-  { tone: 'fresh', label: 'Vert' },
-  { tone: 'action', label: 'Ambre clair' },
-  { tone: 'followup', label: 'Ambre foncé' },
-  { tone: 'qualified', label: 'Bleu' },
-  { tone: 'signed', label: 'Violet' },
-  { tone: 'rejected', label: 'Rouge' },
-  { tone: 'neutral', label: 'Gris' },
+export const STATUS_COLOR_PRESETS: ReadonlyArray<{ color: string; label: string }> = [
+  { color: '#3cae68', label: 'Vert' },
+  { color: '#0ea3b4', label: 'Teal' },
+  { color: '#1d4ed8', label: 'Bleu' },
+  { color: '#6d28d9', label: 'Violet' },
+  { color: '#db2777', label: 'Rose' },
+  { color: '#b91c1c', label: 'Rouge' },
+  { color: '#d97706', label: 'Ambre clair' },
+  { color: '#b45309', label: 'Ambre foncé' },
+  { color: '#5b6472', label: 'Gris' },
 ];
+
+/** Valeur hexadécimale des anciens tons, pour relire une ligne sans `Couleur`. */
+export const TONE_HEX: Record<Tone, string> = {
+  fresh: '#3cae68',
+  action: '#d97706',
+  followup: '#b45309',
+  qualified: '#1d4ed8',
+  signed: '#6d28d9',
+  rejected: '#b91c1c',
+  neutral: '#5b6472',
+};
 
 /**
  * Couleurs de la priorité, sur une échelle d'urgence croissante :

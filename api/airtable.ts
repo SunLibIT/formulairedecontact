@@ -30,7 +30,7 @@ import { googleAuthEnabled, requireAdmin, requireWriter } from './_lib/auth.js';
 
 const BASE_ID = process.env.AIRTABLE_BASE_ID ?? 'appYjCP9BUY8Zj5Ni';
 
-/** Statuts de suivi : lecture publique, écriture réservée aux admins. */
+/** Statuts de suivi : lecture publique, écriture et suppression réservées aux admins. */
 const STATUSES_TABLE = 'tblipMIYgKRdFOI3y';
 
 /** Tables que ce proxy accepte de servir. Toute autre table est refusée. */
@@ -171,11 +171,8 @@ export async function GET(req: Request): Promise<Response> {
  */
 async function guardedProxy(req: Request): Promise<Response> {
   const table = new URL(req.url).searchParams.get('table');
-  if (table === STATUSES_TABLE && req.method === 'DELETE') {
-    // Un statut s'archive, il ne se supprime pas : des demandes y sont liées,
-    // et supprimer la ligne viderait leur statut sans laisser de trace.
-    return json({ error: { message: 'Un statut s’archive, il ne se supprime pas.' } }, 405);
-  }
+  // Statuts : création, modification et suppression réservées aux admins.
+  // L'app bascule les demandes d'un statut avant de le supprimer.
   const check = await (table === STATUSES_TABLE ? requireAdmin : requireWriter)(req);
   if (!check.ok) {
     return json(
