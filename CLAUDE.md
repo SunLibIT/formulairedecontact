@@ -78,6 +78,12 @@ Fields are addressed **by id** (`fld…`) with `returnFieldsByFieldId=true`, nev
 This base has been renamed repeatedly; names are not stable. The one exception is
 `filterByFormula`, which only accepts field names — hence `FIELD_NAMES` in `schema.ts`.
 
+- `returnFieldsByFieldId` goes in the **query string on GET** but in the **JSON body on
+  PATCH/POST**. As a query parameter on a write, Airtable ignores it silently and answers
+  keyed by field *name*; read by id, the returned row looks empty. On 2026-10-08 that made
+  « A relancer » show as a nameless grey row after a reorder, and a created status
+  invisible — the base was intact all along. `readBack` in `StatusManagerModal` now refuses
+  a response without a name instead of rendering it.
 - `Assigné à` is a **link field**. Write an array of record ids, never a string.
 - `typecast` stays `false` everywhere. An unknown select option must fail loudly rather
   than be silently created — that is how the legacy table ended up with ~170 parasitic

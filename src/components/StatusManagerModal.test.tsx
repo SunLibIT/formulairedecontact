@@ -8,11 +8,13 @@ import { StatusManagerModal } from './StatusManagerModal';
 
 vi.mock('../lib/airtable', () => ({
   updateRecord: vi.fn(),
+  updateRecords: vi.fn(),
   createRecord: vi.fn(),
   deleteRecord: vi.fn(),
 }));
 const airtable = await import('../lib/airtable');
 const updateRecord = vi.mocked(airtable.updateRecord);
+const updateRecords = vi.mocked(airtable.updateRecords);
 const createRecord = vi.mocked(airtable.createRecord);
 const deleteRecord = vi.mocked(airtable.deleteRecord);
 
@@ -42,7 +44,7 @@ function Host({
         onReassign={onReassign}
         onClose={() => {}}
       />
-      <output data-testid="names">{list.map((s) => s.name).join('|')}</output>
+      <output data-testid="names">{[...list].sort((a, b) => a.order - b.order).map((s) => s.name).join('|')}</output>
     </>
   );
 }
@@ -69,6 +71,7 @@ const names = () => screen.getByTestId('names').textContent ?? '';
 
 afterEach(() => {
   updateRecord.mockReset();
+  updateRecords.mockReset();
   createRecord.mockReset();
   deleteRecord.mockReset();
 });
@@ -206,5 +209,37 @@ describe('StatusManagerModal', () => {
       [STATUS.color]: '#db2777',
       [STATUS.order]: 9,
     });
+  });
+
+  it('monte un statut sans rien perdre : noms et couleurs restent, l’ordre est renuméroté', async () => {
+    updateRecords.mockResolvedValue({ updated: 3, aborted: false, failed: [] });
+    render(<Host />);
+    const before = names().split('|');
+    const i = before.indexOf('A relancer');
+    fireEvent.click(screen.getByRole('button', { name: 'Monter A relancer' }));
+
+    await waitFor(() => expect(names().split('|').indexOf('A relancer')).toBe(i - 1));
+    expect(names().split('|').sort()).toEqual([...before].sort());
+    expect(screen.getByLabelText('Nom du statut A relancer')).toBeTruthy();
+    // Une seule requête groupée, et des numéros distincts 1, 2, 3…
+    expect(updateRecords).toHaveBeenCalledTimes(1);
+    const written = updateRecords.mock.calls[0][1].map((r) => r.fields[STATUS.order]);
+    expect(new Set(written).size).toBe(written.length);
+  });
+
+  it('refuse une réponse indexée par nom plutôt que d’afficher un statut vide', async () => {
+    // Ce qu'Airtable renvoie quand `returnFieldsByFieldId` est mal transmis.
+    updateRecord.mockResolvedValue({
+      id: 'rech6xrIebR7phhiF',
+      createdTime: '',
+      fields: { Nom: 'A relancer', Couleur: '#db2777' },
+    });
+    render(<Host />);
+    const group = screen.getByRole('group', { name: 'Couleur du statut A relancer' });
+    fireEvent.click(group.querySelector('[title="Rose"]')!);
+
+    await waitFor(() => expect(screen.getByText(/réponse est illisible/)).toBeTruthy());
+    expect(names()).toContain('A relancer');
+    expect(names().split('|')).not.toContain('');
   });
 });

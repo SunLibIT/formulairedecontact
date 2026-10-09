@@ -12,6 +12,13 @@
  * Les champs sont toujours désignés par leur identifiant (`fld…`) et les
  * réponses demandées avec `returnFieldsByFieldId`, pour que renommer un champ
  * dans Airtable n'ait aucun effet sur le code.
+ *
+ * `returnFieldsByFieldId` se passe **dans l'URL** pour une lecture (GET) mais
+ * **dans le corps JSON** pour une écriture (PATCH, POST). En paramètre d'URL
+ * sur une écriture, Airtable l'ignore sans erreur et renvoie les champs par
+ * **nom** : lue par identifiant, la ligne renvoyée paraît vide. C'est ce qui a
+ * fait « disparaître » des statuts à l'écran le 2026-10-08, alors qu'ils
+ * étaient intacts dans la base.
  */
 import { authFetch } from './adminAuth';
 import { BASE_ID } from './schema';
@@ -163,12 +170,10 @@ export async function updateRecord(
   recordId: string,
   fields: Record<string, unknown>,
 ): Promise<AirtableRecord> {
-  const params = new URLSearchParams({ returnFieldsByFieldId: 'true' });
-  return request<AirtableRecord>(
-    `${tableId}/${recordId}`,
-    { method: 'PATCH', body: JSON.stringify({ fields }) },
-    params,
-  );
+  return request<AirtableRecord>(`${tableId}/${recordId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ fields, returnFieldsByFieldId: true }),
+  });
 }
 
 /**
@@ -182,12 +187,10 @@ export async function createRecord(
   tableId: string,
   fields: Record<string, unknown>,
 ): Promise<AirtableRecord> {
-  const params = new URLSearchParams({ returnFieldsByFieldId: 'true' });
-  return request<AirtableRecord>(
-    tableId,
-    { method: 'POST', body: JSON.stringify({ fields }) },
-    params,
-  );
+  return request<AirtableRecord>(tableId, {
+    method: 'POST',
+    body: JSON.stringify({ fields, returnFieldsByFieldId: true }),
+  });
 }
 
 /**
@@ -247,10 +250,9 @@ export async function updateRecords(
         tableId,
         {
           method: 'PATCH',
-          body: JSON.stringify({ records: chunk, typecast: false }),
+          body: JSON.stringify({ records: chunk, typecast: false, returnFieldsByFieldId: true }),
           signal: options.signal,
         },
-        new URLSearchParams({ returnFieldsByFieldId: 'true' }),
       );
       updated += chunk.length;
     } catch {

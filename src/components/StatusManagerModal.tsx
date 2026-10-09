@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useDialog } from '../hooks/useDialog';
-import { createRecord, deleteRecord, updateRecord } from '../lib/airtable';
+import { createRecord, deleteRecord, updateRecord, updateRecords, type AirtableRecord } from '../lib/airtable';
 import {
   ROLE_LABEL,
   STATUS,
@@ -67,6 +67,23 @@ const normName = (s: string) =>
   s.trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+
+/**
+ * La ligne renvoyée par Airtable après une écriture, ou une erreur.
+ *
+ * Une réponse sans nom ne se lit pas comme un statut vide : elle signale une
+ * réponse indexée autrement que par identifiant. L'accepter a déjà affiché
+ * « A relancer » comme une ligne grise sans nom, et fait croire à une perte de
+ * données — mieux vaut un message que l'écran faux.
+ */
+function readBack(record: AirtableRecord): StatusDef {
+  if (typeof record.fields?.[STATUS.name] !== 'string') {
+    throw new Error(
+      "Enregistré dans Airtable, mais la réponse est illisible : rechargez la page pour voir l'état réel.",
+    );
+  }
+  return toStatusDef(record);
+}
 
 export function StatusManagerModal({
   statuses,
@@ -114,20 +131,33 @@ export function StatusManagerModal({
 
   const patch = (id: string, fields: Record<string, unknown>) =>
     run(id, async () => {
-      merge([toStatusDef(await updateRecord(TABLES.statuses, id, fields))]);
+      merge([readBack(await updateRecord(TABLES.statuses, id, fields))]);
     });
 
-  /** Échange la position de deux statuts voisins. */
+  /**
+   * Échange la position de deux statuts voisins.
+   *
+   * Toute la liste active est renumérotée 1, 2, 3… dans l'ordre affiché, et
+   * seules les lignes dont le numéro change sont écrites. Échanger les deux
+   * seuls voisins laissait des ordres en double ailleurs (deux statuts à 9),
+   * et le clic suivant n'avait alors aucun effet visible.
+   */
   const move = (status: StatusDef, direction: -1 | 1) => {
     const index = active.findIndex((s) => s.id === status.id);
     const other = active[index + direction];
     if (!other) return;
-    // Des ordres égaux ou absents s'échangeraient sans effet : on repart des
-    // positions affichées, toujours distinctes.
+    const next = [...active];
+    next[index] = other;
+    next[index + direction] = status;
+    const order = new Map(next.map((s, i) => [s.id, i + 1]));
+    const changed = next.filter((s) => s.order !== order.get(s.id));
     void run(status.id, async () => {
-      const a = await updateRecord(TABLES.statuses, status.id, { [STATUS.order]: index + 1 + direction });
-      const b = await updateRecord(TABLES.statuses, other.id, { [STATUS.order]: index + 1 });
-      merge([toStatusDef(a), toStatusDef(b)]);
+      const result = await updateRecords(
+        TABLES.statuses,
+        changed.map((s) => ({ id: s.id, fields: { [STATUS.order]: order.get(s.id) } })),
+      );
+      if (result.failed.length) throw new Error("Le nouvel ordre n'a pas pu être enregistré.");
+      onChange((prev) => prev.map((s) => (order.has(s.id) ? { ...s, order: order.get(s.id)! } : s)));
     });
   };
 
@@ -137,9 +167,9 @@ export function StatusManagerModal({
       const rows: StatusDef[] = [];
       const holder = role ? statuses.find((s) => s.role === role && s.id !== status.id) : undefined;
       if (holder) {
-        rows.push(toStatusDef(await updateRecord(TABLES.statuses, holder.id, { [STATUS.role]: null })));
+        rows.push(readBack(await updateRecord(TABLES.statuses, holder.id, { [STATUS.role]: null })));
       }
-      rows.push(toStatusDef(await updateRecord(TABLES.statuses, status.id, { [STATUS.role]: role })));
+      rows.push(readBack(await updateRecord(TABLES.statuses, status.id, { [STATUS.role]: role })));
       merge(rows);
     });
 
@@ -168,7 +198,7 @@ export function StatusManagerModal({
           [STATUS.color]: color,
           [STATUS.order]: last + 1,
         });
-        const created = toStatusDef(record);
+        const created = readBack(record);
         onChange((prev) => [...prev, created]);
       },
       'Création refusée',

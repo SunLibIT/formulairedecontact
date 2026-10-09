@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { updateRecords } from './airtable';
+import { createRecord, updateRecord, updateRecords } from './airtable';
 
 const TABLE = 'tblcgBrFfVCBrczdl';
 
@@ -37,6 +37,25 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('returnFieldsByFieldId sur les écritures', () => {
+  // Sur un PATCH ou un POST, Airtable ignore ce paramètre dans l'URL et
+  // renvoie les champs par nom : la ligne relue par identifiant paraît vide.
+  it('voyage dans le corps d’une mise à jour', async () => {
+    await updateRecord(TABLE, 'rec00000000000001', { fldA: 1 });
+    expect(bodyOf(fetchMock, 0).returnFieldsByFieldId).toBe(true);
+  });
+
+  it('voyage dans le corps d’une création', async () => {
+    await createRecord(TABLE, { fldA: 1 });
+    expect(bodyOf(fetchMock, 0).returnFieldsByFieldId).toBe(true);
+  });
+
+  it('voyage dans le corps d’une écriture groupée', async () => {
+    await updateRecords(TABLE, makeRecords(2));
+    expect(bodyOf(fetchMock, 0).returnFieldsByFieldId).toBe(true);
+  });
 });
 
 describe('updateRecords', () => {
@@ -145,7 +164,7 @@ describe('updateRecords', () => {
     await updateRecords(TABLE, makeRecords(2));
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe('PATCH');
-    expect(String(url)).toContain('returnFieldsByFieldId=true');
+    expect(bodyOf(fetchMock, 0).returnFieldsByFieldId).toBe(true);
     expect(String(url)).toContain(TABLE);
   });
 });
