@@ -585,6 +585,8 @@ réappliquer après chaque livraison** (`vibe_coding_block_set_action_visibility
 
 ### Normes CRM 3 (depuis le 23/11/2026)
 
+Publié par l'app CRM 3 le 23/11/2026 à 11:40, à la demande de l'utilisateur (bloc sha256 `8b00ac34…`).
+
 L'app suit le Kit de code CRM 3 (Notion), sur Vercel comme dans Softr :
 - `src/components/kit.tsx` : tokens `T`, `Deroulant` / `ListeChoix` (menus maison, **plus aucun
   `<select>` natif**), `Tooltip` + `TooltipRacine` (**plus de `title=`**), `ChampDate` (plus
