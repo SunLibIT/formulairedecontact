@@ -604,6 +604,10 @@ L'app suit le Kit de code CRM 3 (Notion), sur Vercel comme dans Softr :
   déjà pris ailleurs fait renuméroter par esbuild les alias de tout le bundle (`useState2` →
   `useState3`) et le diff de livraison devient le fichier entier. Garder cette règle pour tout
   nouveau module partagé.
+- Fiche d'une demande (`LeadModal`, refaite le 23/11/2026) : monogramme, source et ancienneté en tête ;
+  deux colonnes dès 1024 px (la demande à gauche, le suivi collé à droite) ; tuiles e-mail / téléphone
+  avec copie et action ; « Voir sur la carte » ; message en citation ; « Modifications non
+  enregistrées » dans le pied ; Ctrl/⌘ + Entrée enregistre.
 - `softr/ops.mjs` calcule chaque opération sur le texte tel qu'il sera à son tour (contexte jamais
   pris dans un bloc déjà réécrit).
 

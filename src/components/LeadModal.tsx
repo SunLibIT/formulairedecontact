@@ -10,7 +10,8 @@
  *    attend un tableau d'identifiants ;
  *  - le rechargement de la table RH à chaque ouverture.
  *
- * Charte : en-tête fixe, corps défilant, pied fixe ; `role="dialog"` +
+ * Charte : en-tête fixe, corps défilant (deux colonnes sur grand écran depuis
+ * le 23/11/2026 : la demande à gauche, le suivi à droite), pied fixe ; `role="dialog"` +
  * `aria-modal`, piège de focus, Échap et clic sur l'arrière-plan, restitution
  * du focus à la fermeture.
  *
@@ -24,7 +25,11 @@ import {
   Archive,
   Briefcase,
   Building2,
+  CalendarDays,
+  Check,
+  ClipboardList,
   Copy,
+  ExternalLink,
   Euro,
   Mail,
   MapPin,
@@ -42,6 +47,7 @@ import { useId, useMemo, useState } from 'react';
 import { useDialog } from '../hooks/useDialog';
 import { updateRecord } from '../lib/airtable';
 import type { DuplicateMark } from '../lib/duplicates';
+import { formatPersonName, formatPhone } from '../lib/format';
 import { duplicateNote } from '../lib/leadActions';
 import { formatAddress, type Lead, type StaffMember } from '../lib/records';
 import {
@@ -64,7 +70,7 @@ import {
   type SectorIndex,
 } from '../lib/territories';
 import { TONE_STYLE, statusChipStyle } from '../lib/tones';
-import { ListeChoix, Tooltip } from './kit';
+import { ListeChoix, Monogram, Tooltip } from './kit';
 import { WRITE_TARGET, statusWrite } from '../lib/writeTargets';
 import { SearchableSelect } from './SearchableSelect';
 import { Callout, PriorityBadge, RelativeDate, SecondaryButton, StatusBadge } from './ui';
@@ -182,13 +188,15 @@ export function LeadModal({
   };
 
   const address = formatAddress(lead.address);
+  const name = formatPersonName(lead.fullName) || lead.fullName || 'Sans nom';
+  const subtitle = [lead.category, lead.company].filter(Boolean).join(' · ');
+  const mapsUrl = address
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+    : '';
 
   return (
     <div
-      // Trois signaux de profondeur cumulés : un voile assez dense pour que
-      // le fond cesse d'être lisible, un flou qui le repousse, et l'ombre
-      // portée du panneau. Le voile à 40 % sans flou laissait une surface
-      // blanche sur un fond quasi blanc, impossible à distinguer.
+      // Voile dense + flou + ombre du panneau : le fond cesse d'être lisible.
       className="modal-overlay fixed inset-0 z-[2000] flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -200,276 +208,294 @@ export function LeadModal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="modal-panel flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-card bg-surface sm:rounded-card"
+        onKeyDown={(e) => {
+          // Ctrl/⌘ + Entrée enregistre, d'où que l'on soit dans la fiche.
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && dirty && !saving) {
+            e.preventDefault();
+            void persist();
+          }
+        }}
+        className="modal-panel flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-card bg-surface sm:rounded-card lg:max-w-5xl"
       >
-        {/* ---- en-tête fixe ---- */}
-        {/* Fond légèrement teinté : donne une structure interne au panneau et
-            marque la limite de la zone défilante. */}
-        <header className="flex items-start justify-between gap-3 border-b border-line bg-canvas px-5 py-4">
-          <div className="min-w-0">
-            <h2 id={titleId} className="truncate text-lg font-bold text-ink">
-              {lead.fullName}
+        {/* ---- en-tête fixe : qui, où en est la demande, depuis quand ---- */}
+        <header className="flex items-start gap-3 border-b border-line bg-surface px-5 py-4">
+          <Monogram name={lead.fullName} size={44} />
+          <div className="min-w-0 flex-1">
+            <h2 id={titleId} className="truncate text-lg font-bold leading-tight text-ink">
+              {name}
             </h2>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+            {subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
               <StatusBadge status={lead.status} />
               <PriorityBadge priority={lead.priority} />
-              <span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-canvas px-2 py-0.5 font-medium">
+                {lead.source === 'solar' ? (
+                  <Sun className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                ) : (
+                  <Mail className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                )}
+                {lead.source === 'solar' ? 'Lead simulateur' : 'Demande de contact'}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
                 Reçue <RelativeDate iso={lead.date} />
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fermer"
-            className="shrink-0 rounded-control p-1.5 text-muted hover:bg-canvas hover:text-ink"
-          >
-            <X className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
-          </button>
+          <Tooltip content="Fermer (Échap)">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fermer"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
+            >
+              <X className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+            </button>
+          </Tooltip>
         </header>
 
-        {/* ---- corps défilant ---- */}
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-          {/* Doublon : en tête du corps, avant les coordonnées. C'est la
-              première chose à trancher — le reste de la fiche ne veut rien
-              dire tant qu'on ne sait pas si cette demande-là est celle qui
-              compte. Le bouton n'apparaît que sur une demande effectivement
-              répétée : l'index l'a marquée, donc l'écriture est légitime. */}
-          {duplicate && onArchiveDuplicate && (
-            <section className="space-y-2.5 rounded-card border border-line bg-canvas p-3">
-              <p className="flex items-start gap-2 text-sm">
-                <Copy
-                  className="mt-0.5 h-4 w-4 shrink-0 text-muted"
-                  strokeWidth={1.75}
-                  aria-hidden="true"
-                />
-                <span className="min-w-0">
-                  <span className="font-semibold text-ink">Demande répétée</span>
-                  <span className="text-muted">
-                    {' — '}
-                    {duplicateNote(duplicate).title}.
-                  </span>{' '}
-                  <span className="text-muted">
-                    L'archiver la retire des listes sans rien supprimer : son
-                    statut passe à « Archivé » et tout reste consultable dans
-                    Airtable.
-                  </span>
-                </span>
-              </p>
+        {/* ---- corps défilant : deux colonnes sur grand écran ---- */}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+          <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
+            {/* Colonne de gauche : la demande, en lecture */}
+            <div className="space-y-4">
+              {/* Doublon : à trancher avant le reste. Le bouton n'apparaît que
+                  sur une demande effectivement répétée. */}
+              {duplicate && onArchiveDuplicate && (
+                <section className="space-y-2.5 rounded-card border border-amber-border bg-amber-bg p-3.5">
+                  <p className="flex items-start gap-2 text-sm">
+                    <Copy className="mt-0.5 h-4 w-4 shrink-0 text-amber" strokeWidth={1.75} aria-hidden="true" />
+                    <span className="min-w-0">
+                      <span className="font-semibold text-ink">Demande répétée</span>
+                      <span className="text-muted">
+                        {' — '}
+                        {duplicateNote(duplicate).title}.
+                      </span>{' '}
+                      <span className="text-muted">
+                        L'archiver la retire des listes sans rien supprimer : son
+                        statut passe à « Archivé » et tout reste consultable dans
+                        Airtable.
+                      </span>
+                    </span>
+                  </p>
 
-              {confirmingArchive ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-ink">
-                    Archiver cette demande&nbsp;?
-                  </span>
-                  <SecondaryButton
-                    icon={Archive}
-                    busy={archiving}
-                    onClick={() => {
-                      setArchiving(true);
-                      setError('');
-                      void (async () => {
-                        try {
-                          await onArchiveDuplicate(lead);
-                          // La demande quitte la liste : la fiche n'a plus de
-                          // raison de rester ouverte par-dessus.
-                          onClose();
-                        } catch (e) {
-                          setError(
-                            e instanceof Error
-                              ? e.message
-                              : "L'archivage n'a pas pu être enregistré. Réessayez.",
-                          );
-                          setArchiving(false);
-                          setConfirmingArchive(false);
-                        }
-                      })();
-                    }}
-                  >
-                    Confirmer
-                  </SecondaryButton>
-                  <SecondaryButton
-                    onClick={() => setConfirmingArchive(false)}
-                    disabled={archiving}
-                  >
-                    Annuler
-                  </SecondaryButton>
-                </div>
-              ) : (
-                <SecondaryButton icon={Archive} onClick={() => setConfirmingArchive(true)}>
-                  Archiver ce doublon
-                </SecondaryButton>
-              )}
-            </section>
-          )}
-
-          <section className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
-            <Field icon={Mail} label="Email">
-              {lead.email ? (
-                <a href={`mailto:${lead.email}`} className="text-teal-ink hover:underline">
-                  {lead.email}
-                </a>
-              ) : (
-                <Dash />
-              )}
-            </Field>
-            <Field icon={Phone} label="Téléphone">
-              {lead.phone ? (
-                <a href={`tel:${lead.phone}`} className="text-teal-ink hover:underline">
-                  {lead.phone}
-                </a>
-              ) : (
-                <Dash />
-              )}
-            </Field>
-            <Field icon={Building2} label="Entreprise">
-              {lead.company || <Dash />}
-            </Field>
-            <Field icon={User} label="Type">
-              {lead.category || <Dash />}
-            </Field>
-            {lead.motive && (
-              <Field icon={Briefcase} label="Motif" wide>
-                {lead.motive}
-              </Field>
-            )}
-            <Field icon={MapPin} label="Adresse" wide>
-              {address || <Dash />}
-            </Field>
-          </section>
-
-          {lead.source === 'solar' && lead.metrics && (
-            <section className="grid grid-cols-3 gap-3 rounded-card border border-line bg-canvas p-3">
-              <Metric icon={Euro} label="Facture" value={lead.metrics.monthlyBill} unit="€/mois" />
-              <Metric icon={Sun} label="Puissance" value={lead.metrics.recommendedPower} unit="kWc" />
-              <Metric icon={Zap} label="Consommation" value={lead.metrics.annualConsumption} unit="kWh/an" />
-            </section>
-          )}
-
-          {lead.message && (
-            <section className="rounded-card border border-line bg-canvas p-4">
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink">
-                <MessageSquare className="h-4 w-4 text-teal-ink" strokeWidth={1.75} aria-hidden="true" />
-                Message
-              </h3>
-              <p className="whitespace-pre-wrap text-sm text-ink">{lead.message}</p>
-            </section>
-          )}
-
-          {/* ---- édition du suivi ---- */}
-          <section className="space-y-4 rounded-card border border-line p-4">
-            <h3 className="text-sm font-semibold text-ink">Suivi commercial</h3>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* Les deux listes reprennent le code couleur de la valeur
-                  sélectionnée : on lit l'état du dossier sans avoir à
-                  déchiffrer le libellé. */}
-              <div>
-                <label
-                  htmlFor={statusId}
-                  className="mb-1.5 block text-xs font-medium text-muted"
-                >
-                  Statut
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1">
-                    {/* Un statut archivé ou hérité reste dans la liste quand la
-                        demande le porte, pour ne pas le réécrire en silence. */}
-                    <ListeChoix
-                      id={statusId}
-                      autoFocus
-                      ariaLabel="Statut"
-                      value={status.id}
-                      onChange={(v) => {
-                        const next = statuses.byId.get(v);
-                        if (next) setStatus(next);
-                      }}
-                      options={selectableStatuses(statuses, status).map((st) => ({
-                        v: st.id,
-                        l: st.name,
-                        rendu: <PastilleStatut nom={st.name} couleur={st.color} />,
-                      }))}
-                      style={{ ...statusChipStyle(status.color), fontWeight: 600 }}
-                    />
-                  </span>
-                  {onManageStatuses && (
-                    <Tooltip content="Gérer les statuts"><button
-                      type="button"
-                      onClick={onManageStatuses}
-                      className="inline-flex shrink-0 items-center justify-center self-stretch rounded-control px-2.5 border border-line bg-surface text-muted transition-colors hover:text-ink focus-visible:shadow-focus focus-visible:outline-none"
-                      aria-label="Gérer les statuts"
-                    >
-                      <Settings2 className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-                    </button></Tooltip>
+                  {confirmingArchive ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-ink">Archiver cette demande&nbsp;?</span>
+                      <SecondaryButton
+                        icon={Archive}
+                        busy={archiving}
+                        onClick={() => {
+                          setArchiving(true);
+                          setError('');
+                          void (async () => {
+                            try {
+                              await onArchiveDuplicate(lead);
+                              onClose();
+                            } catch (e) {
+                              setError(
+                                e instanceof Error
+                                  ? e.message
+                                  : "L'archivage n'a pas pu être enregistré. Réessayez.",
+                              );
+                              setArchiving(false);
+                              setConfirmingArchive(false);
+                            }
+                          })();
+                        }}
+                      >
+                        Confirmer
+                      </SecondaryButton>
+                      <SecondaryButton onClick={() => setConfirmingArchive(false)} disabled={archiving}>
+                        Annuler
+                      </SecondaryButton>
+                    </div>
+                  ) : (
+                    <SecondaryButton icon={Archive} onClick={() => setConfirmingArchive(true)}>
+                      Archiver ce doublon
+                    </SecondaryButton>
                   )}
+                </section>
+              )}
+
+              <Carte icon={User} titre="Coordonnées">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <TuileContact
+                    icon={Mail}
+                    label="E-mail"
+                    valeur={lead.email}
+                    href={lead.email ? `mailto:${lead.email}` : ''}
+                    action="Écrire"
+                  />
+                  <TuileContact
+                    icon={Phone}
+                    label="Téléphone"
+                    valeur={lead.phone ? formatPhone(lead.phone) : ''}
+                    copie={lead.phone}
+                    href={lead.phone ? `tel:${lead.phone}` : ''}
+                    action="Appeler"
+                  />
                 </div>
-              </div>
+                <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                  <Field icon={MapPin} label="Adresse" wide>
+                    {address ? (
+                      <span className="flex flex-wrap items-baseline gap-x-2">
+                        <span>{address}</span>
+                        <a
+                          href={mapsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-teal-ink hover:underline"
+                        >
+                          Voir sur la carte
+                          <ExternalLink className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                        </a>
+                      </span>
+                    ) : (
+                      <Dash />
+                    )}
+                  </Field>
+                  <Field icon={Building2} label="Entreprise">
+                    {lead.company || <Dash />}
+                  </Field>
+                  <Field icon={User} label="Type">
+                    {lead.category || <Dash />}
+                  </Field>
+                </dl>
+              </Carte>
 
-              <Champ text="Priorité">
-                <ListeChoix
-                  ariaLabel="Priorité"
-                  value={priority}
-                  onChange={(v) => setPriority(v as Priority)}
-                  options={PRIORITIES.map((p) => ({ v: p, l: p }))}
-                  style={{ ...TONE_STYLE[PRIORITY_TONE[priority]], fontWeight: 600 }}
-                />
-              </Champ>
+              {(lead.motive || lead.message) && (
+                <Carte icon={MessageSquare} titre="La demande">
+                  {lead.motive && (
+                    <p className="flex items-start gap-2 text-sm font-semibold text-ink">
+                      <Briefcase className="mt-0.5 h-4 w-4 shrink-0 text-muted" strokeWidth={1.75} aria-hidden="true" />
+                      <span className="min-w-0 break-words">{lead.motive}</span>
+                    </p>
+                  )}
+                  {lead.message && (
+                    // Citation : c'est la voix du demandeur, pas une valeur de champ.
+                    <blockquote className="mt-3 whitespace-pre-wrap break-words rounded-control bg-canvas px-3.5 py-3 text-sm italic leading-relaxed text-ink">
+                      {lead.message}
+                    </blockquote>
+                  )}
+                </Carte>
+              )}
 
-              {/* Pleine largeur : la liste déroulante doit avoir la place
-                  d'afficher un nom complet et les départements qu'il couvre
-                  sans troncature. */}
-              <div className="sm:col-span-2">
-                <Champ text="Assigné à">
-                  {/* 35 collaborateurs : un select natif se parcourt à l'œil,
-                      celui-ci se filtre au clavier et trie alphabétiquement. */}
-                  <SearchableSelect
-                    ariaLabel="Assigné à"
-                    emptyLabel="Non assigné"
-                    searchPlaceholder="Rechercher un collaborateur…"
-                    value={assigneeId}
-                    onChange={setAssigneeId}
-                    options={assigneeOptions}
-                    groups={staffGroups(sector)}
-                  />
-                </Champ>
-              </div>
-
-              <div className="sm:col-span-2">
-                <Label text="Partenaire">
-                  <input
-                    className="field"
-                    value={partner}
-                    onChange={(e) => setPartner(e.target.value)}
-                    placeholder="Aucun"
-                  />
-                </Label>
-              </div>
+              {lead.source === 'solar' && lead.metrics && (
+                <Carte icon={Sun} titre="Simulation">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Metric icon={Euro} label="Facture" value={lead.metrics.monthlyBill} unit="€/mois" />
+                    <Metric icon={Sun} label="Puissance" value={lead.metrics.recommendedPower} unit="kWc" />
+                    <Metric icon={Zap} label="Conso." value={lead.metrics.annualConsumption} unit="kWh/an" />
+                  </div>
+                </Carte>
+              )}
             </div>
 
-            <Label text="Notes">
-              <textarea
-                className="field min-h-24 resize-y"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Contexte, échanges, prochaine étape…"
-              />
-            </Label>
-          </section>
+            {/* Colonne de droite : le suivi, en écriture. Collée en haut sur
+                grand écran pour rester sous la main pendant la lecture. */}
+            <div className="space-y-4 lg:sticky lg:top-0">
+              <Carte icon={ClipboardList} titre="Suivi commercial">
+                <div className="grid gap-4">
+                  {/* Les deux listes reprennent le code couleur de la valeur choisie. */}
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                    <div>
+                      <label htmlFor={statusId} className="mb-1.5 block text-xs font-medium text-muted">
+                        Statut
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1">
+                          {/* Un statut archivé ou hérité reste dans la liste quand la
+                              demande le porte, pour ne pas le réécrire en silence. */}
+                          <ListeChoix
+                            id={statusId}
+                            autoFocus
+                            ariaLabel="Statut"
+                            value={status.id}
+                            onChange={(v) => {
+                              const next = statuses.byId.get(v);
+                              if (next) setStatus(next);
+                            }}
+                            options={selectableStatuses(statuses, status).map((st) => ({
+                              v: st.id,
+                              l: st.name,
+                              rendu: <PastilleStatut nom={st.name} couleur={st.color} />,
+                            }))}
+                            style={{ ...statusChipStyle(status.color), fontWeight: 600 }}
+                          />
+                        </span>
+                        {onManageStatuses && (
+                          <Tooltip content="Gérer les statuts">
+                            <button
+                              type="button"
+                              onClick={onManageStatuses}
+                              className="inline-flex shrink-0 items-center justify-center self-stretch rounded-control border border-line bg-surface px-2.5 text-muted transition-colors hover:text-ink focus-visible:shadow-focus focus-visible:outline-none"
+                              aria-label="Gérer les statuts"
+                            >
+                              <Settings2 className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                            </button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </div>
 
-          {error && (
-            <Callout tone="danger" icon={AlertTriangle}>
-              {error}
-            </Callout>
-          )}
+                    <Champ text="Priorité">
+                      <ListeChoix
+                        ariaLabel="Priorité"
+                        value={priority}
+                        onChange={(v) => setPriority(v as Priority)}
+                        options={PRIORITIES.map((p) => ({ v: p, l: p }))}
+                        style={{ ...TONE_STYLE[PRIORITY_TONE[priority]], fontWeight: 600 }}
+                      />
+                    </Champ>
+                  </div>
+
+                  {/* Le commercial du département est remonté en tête de liste. */}
+                  <Champ text={sector ? `Assigné à · secteur ${sector.code}` : 'Assigné à'}>
+                    <SearchableSelect
+                      ariaLabel="Assigné à"
+                      emptyLabel="Non assigné"
+                      searchPlaceholder="Rechercher un collaborateur…"
+                      value={assigneeId}
+                      onChange={setAssigneeId}
+                      options={assigneeOptions}
+                      groups={staffGroups(sector)}
+                    />
+                  </Champ>
+
+                  <Label text="Partenaire">
+                    <input
+                      className="field"
+                      value={partner}
+                      onChange={(e) => setPartner(e.target.value)}
+                      placeholder="Aucun"
+                    />
+                  </Label>
+
+                  <Label text="Notes internes">
+                    <textarea
+                      className="field min-h-28 resize-y"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Contexte, échanges, prochaine étape…"
+                    />
+                  </Label>
+                </div>
+              </Carte>
+
+              {error && (
+                <Callout tone="danger" icon={AlertTriangle}>
+                  {error}
+                </Callout>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* ---- pied fixe ---- */}
-        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-canvas px-5 py-3">
-          {/* Un clic, sans confirmation. La charte proscrit l'accès direct
-              aux actions destructrices, mais celle-ci ne détruit rien : elle
-              pose un statut, que la liste juste au-dessus permet de changer
-              aussitôt. Une confirmation n'était que de la friction sur un
-              geste de tri courant. */}
+        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface px-5 py-3">
+          {/* « Hors critères » en un clic : il pose un statut que la liste
+              ci-dessus permet de changer aussitôt, il ne détruit rien. */}
           {rejected ? (
             <SecondaryButton
               tone="danger"
@@ -484,18 +510,26 @@ export function LeadModal({
             <span />
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {dirty && !saving && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber">
+                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[color:var(--amber-soft)]" />
+                Modifications non enregistrées
+              </span>
+            )}
             <SecondaryButton onClick={onClose}>Fermer</SecondaryButton>
             {/* Désactivé tant que rien n'a changé. */}
-            <button
-              type="button"
-              onClick={() => persist()}
-              disabled={saving || !dirty}
-              className="group inline-flex items-center gap-2 rounded-control bg-brand px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Save className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
+            <Tooltip content="Enregistrer (Ctrl + Entrée)">
+              <button
+                type="button"
+                onClick={() => persist()}
+                disabled={saving || !dirty}
+                className="group inline-flex items-center gap-2 rounded-control bg-brand px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_18px_-8px_rgba(14,147,132,.7)] transition-[transform,opacity] hover:-translate-y-px disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+              >
+                <Save className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                {saving ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </Tooltip>
           </div>
         </footer>
       </div>
@@ -574,16 +608,106 @@ function Metric({
   unit: string;
 }) {
   return (
-    <div>
+    <div className="rounded-control bg-canvas px-3 py-2.5">
       <p className="flex items-center gap-1.5 text-xs font-medium text-muted">
         <Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         {label}
       </p>
-      {/* Valeurs numériques alignées à droite (charte). */}
-      <p className="text-right text-lg font-semibold tabular-nums text-ink">
-        {value != null ? value : '—'}
-        {value != null && <span className="ml-1 text-xs font-normal text-muted">{unit}</span>}
+      {/* Unité sous la valeur : sur un écran étroit, « 228 000 kWh/an »
+          en ligne se coupait au milieu de l'unité. */}
+      <p className="mt-0.5 whitespace-nowrap text-base font-bold tabular-nums text-ink sm:text-lg">
+        {value != null ? value.toLocaleString('fr-FR') : '—'}
       </p>
+      {value != null && <p className="whitespace-nowrap text-[11px] font-medium text-muted">{unit}</p>}
+    </div>
+  );
+}
+
+/** Section de la fiche : carte blanche, titre précédé d'une pastille d'icône teal. */
+function Carte({ icon: Icon, titre, children }: { icon: LucideIcon; titre: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-card border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(16,26,40,.05)]">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-ink">
+        <span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-[8px] bg-teal-soft text-teal">
+          <Icon className="h-4 w-4" strokeWidth={1.9} />
+        </span>
+        {titre}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Tuile de coordonnée : la valeur, un bouton pour la copier et un lien
+ * d'action (écrire, appeler). Vide : un tiret, pas de bouton.
+ */
+function TuileContact({
+  icon: Icon,
+  label,
+  valeur,
+  copie,
+  href,
+  action,
+}: {
+  icon: LucideIcon;
+  label: string;
+  valeur: string;
+  /** Texte copié, s'il diffère de l'affichage (numéro brut). */
+  copie?: string;
+  href: string;
+  action: string;
+}) {
+  const [copie_ok, setCopieOk] = useState(false);
+  const copier = () => {
+    const texte = copie || valeur;
+    void navigator.clipboard?.writeText(texte).then(
+      () => {
+        setCopieOk(true);
+        window.setTimeout(() => setCopieOk(false), 1400);
+      },
+      () => {},
+    );
+  };
+  return (
+    <div className="flex min-w-0 items-center gap-2.5 rounded-control border border-line bg-canvas px-3 py-2.5">
+      <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-[8px] bg-surface text-teal-ink">
+        <Icon className="h-4 w-4" strokeWidth={1.9} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</p>
+        {valeur ? (
+          <a href={href} className="block truncate text-sm font-semibold text-ink hover:text-teal-ink hover:underline">
+            {valeur}
+          </a>
+        ) : (
+          <Dash />
+        )}
+      </div>
+      {valeur && (
+        <div className="flex shrink-0 items-center gap-1">
+          <Tooltip content={copie_ok ? 'Copié' : `Copier ${label.toLowerCase()}`}>
+            <button
+              type="button"
+              onClick={copier}
+              aria-label={`Copier ${label.toLowerCase()}`}
+              className="grid h-8 w-8 place-items-center rounded-[8px] text-muted transition-colors hover:bg-surface hover:text-ink"
+            >
+              {copie_ok ? (
+                <Check className="h-4 w-4 text-teal" strokeWidth={2.2} aria-hidden="true" />
+              ) : (
+                <Copy className="h-4 w-4" strokeWidth={1.9} aria-hidden="true" />
+              )}
+            </button>
+          </Tooltip>
+          <a
+            href={href}
+            className="hidden rounded-[8px] px-2 py-1 text-xs font-semibold text-teal-ink transition-colors hover:bg-teal-soft sm:inline-block"
+          >
+            {action}
+          </a>
+        </div>
+      )}
     </div>
   );
 }
