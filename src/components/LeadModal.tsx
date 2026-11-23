@@ -319,7 +319,10 @@ export function LeadModal({
               )}
 
               <Carte icon={User} titre="Coordonnées">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                {/* Une tuile par ligne, à toutes les largeurs : côte à côte, la
+                    demi-colonne laissait ~150 px à l'e-mail, coupé même sur un
+                    grand écran. */}
+                <div className="grid gap-2">
                   <TuileContact
                     icon={Mail}
                     label="E-mail"
@@ -677,7 +680,9 @@ function TuileContact({
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</p>
         {valeur ? (
-          <a href={href} className="block truncate text-sm font-semibold text-ink hover:text-teal-ink hover:underline">
+          // Jamais tronqué : une coordonnée coupée ne sert à rien. Sur un écran
+          // étroit, l'e-mail passe à la ligne où il peut.
+          <a href={href} className="block text-sm font-semibold text-ink [overflow-wrap:anywhere] hover:text-teal-ink hover:underline">
             {valeur}
           </a>
         ) : (
