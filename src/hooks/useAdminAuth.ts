@@ -30,6 +30,11 @@ export interface AdminAuth {
    */
   isAdmin: boolean;
   busy: boolean;
+  /**
+   * Vrai quand l'identité vient de l'hôte (page Softr du CRM) : pas de
+   * connexion ni de déconnexion propres à l'app. Absent ici, sur Vercel.
+   */
+  external?: boolean;
   signIn: () => Promise<void>;
   signOut: () => void;
 }

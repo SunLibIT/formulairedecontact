@@ -15,6 +15,16 @@ import { useEffect, useRef } from 'react';
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/**
+ * Élément qui a le focus, en descendant dans les Shadow DOM : vu du document,
+ * le focus d'un champ du bloc Softr est porté par l'hôte du bloc.
+ */
+function deepActiveElement(): Element | null {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el;
+}
+
 export function useDialog(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
   const restoreTo = useRef<Element | null>(null);
@@ -26,7 +36,7 @@ export function useDialog(onClose: () => void) {
   close.current = onClose;
 
   useEffect(() => {
-    restoreTo.current = document.activeElement;
+    restoreTo.current = deepActiveElement();
 
     const node = ref.current;
     // Le focus part sur le premier contrôle marqué, à défaut sur la boîte.
@@ -38,7 +48,10 @@ export function useDialog(onClose: () => void) {
       // Deux boîtes peuvent s'empiler (la gestion des statuts s'ouvre depuis
       // une fiche) : seule celle du dessus réagit, sinon `Échap` fermerait
       // les deux et le piège de focus de l'une se battrait avec l'autre.
-      const open = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      // Cherchées dans la racine de la boîte, pas dans `document` : dans le
+      // bloc Softr, l'app vit dans un Shadow DOM que `document` ne voit pas.
+      const root = (node?.getRootNode() ?? document) as Document | ShadowRoot;
+      const open = root.querySelectorAll('[role="dialog"][aria-modal="true"]');
       if (node && open.length && open[open.length - 1] !== node) return;
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -54,10 +67,11 @@ export function useDialog(onClose: () => void) {
 
       // Tab en fin de liste revient au début, et l'inverse : le focus ne
       // s'échappe pas vers la page masquée derrière.
-      if (e.shiftKey && document.activeElement === start) {
+      const current = deepActiveElement();
+      if (e.shiftKey && current === start) {
         e.preventDefault();
         end.focus();
-      } else if (!e.shiftKey && document.activeElement === end) {
+      } else if (!e.shiftKey && current === end) {
         e.preventDefault();
         start.focus();
       }

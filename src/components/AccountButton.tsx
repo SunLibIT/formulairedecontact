@@ -37,7 +37,9 @@ export function AccountButton({
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: MouseEvent) => {
-      if (!container.current?.contains(e.target as Node)) setOpen(false);
+      // `composedPath` et non `contains(e.target)` : dans le bloc Softr, l'app
+      // vit dans un Shadow DOM et la cible vue du document est l'hôte du bloc.
+      if (!container.current || !e.composedPath().includes(container.current)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -124,8 +126,10 @@ export function AccountButton({
               <p className="flex items-start gap-2 text-sm text-amber">
                 <ShieldX className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
                 <span>
-                  Ce compte n&apos;est pas un collaborateur actif de la table RH : la
-                  consultation reste possible, la modification est refusée.
+                  {auth.external
+                    ? 'Ce compte n’est pas un membre actif de l’Équipe SunLib : la consultation reste possible, la modification est refusée.'
+                    : <>Ce compte n&apos;est pas un collaborateur actif de la table RH : la
+                  consultation reste possible, la modification est refusée.</>}
                 </span>
               </p>
             )}
@@ -169,18 +173,22 @@ export function AccountButton({
             </button>
           )}
 
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              auth.signOut();
-              setOpen(false);
-            }}
-            className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-sm font-medium text-ink transition-colors hover:bg-canvas"
-          >
-            <LogOut className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
-            Se déconnecter
-          </button>
+          {/* Identité tenue par l'hôte (page Softr du CRM) : la session est
+              celle du CRM, on ne s'en déconnecte pas d'ici. */}
+          {!auth.external && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                auth.signOut();
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-sm font-medium text-ink transition-colors hover:bg-canvas"
+            >
+              <LogOut className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+              Se déconnecter
+            </button>
+          )}
         </div>
       )}
     </div>

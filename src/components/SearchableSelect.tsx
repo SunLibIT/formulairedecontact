@@ -137,7 +137,9 @@ export function SearchableSelect({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      // `composedPath` et non `contains(e.target)` : dans le bloc Softr, l'app
+      // vit dans un Shadow DOM et la cible vue du document est l'hôte du bloc.
+      if (!rootRef.current || !e.composedPath().includes(rootRef.current)) setOpen(false);
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);

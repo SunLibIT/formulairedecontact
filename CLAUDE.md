@@ -511,3 +511,81 @@ account menu). Nothing is locked: there is no « system » status, by product de
 - **Backfill.** Leads created before 2026-10-07 have no link until someone saves them (the
   record dialog always rewrites the link). The legacy fallback makes that invisible. A
   one-off backfill of `Statut (lien)` from the old select would let the old field go.
+
+## Bloc Softr du CRM 3 — page « Suivi des demandes » (depuis le 23/11/2026)
+
+L'app tourne aussi, **à l'identique**, comme bloc vibe coding de l'app Softr **CRM 3**
+(`5d20da4a-9d3f-4702-99a5-4925410aac46`), page `/suivi-des-demandes`
+(`622f8fb1-c181-4737-a33e-f50ed5090053`), bloc `de7a196e-e3cf-40cc-95d7-8bb63b9c92b0`.
+Studio : https://studio.softr.io/applications/5d20da4a-9d3f-4702-99a5-4925410aac46/pages/622f8fb1-c181-4737-a33e-f50ed5090053
+La tuile « Demandes de contact » de l'accueil SunLib (SUN_ACCUEIL, onglet Outils) y mène
+depuis le 23/11/2026. Vercel reste en place : le **webhook Typeform** (`api/typeform-webhook`)
+y vit toujours, et les liens des mails d'assignation (champ « Lien de suivi ») y pointent encore.
+
+### Une seule base de code, un build
+
+`src/` est partagé. `softr/` ne contient que ce qui diffère :
+
+| Fichier | Rôle |
+| --- | --- |
+| `softr/Block.tsx` | point d'entrée : branche les hooks Softr sur les 5 tables, rend `src/App.tsx` dans `.sdc-root` |
+| `softr/pont.ts` | remplace `src/lib/airtable.ts` (mêmes exports) : lectures et écritures par Softr, au format de l'API Airtable |
+| `softr/droits.ts` | remplace `useAdminAuth` et `useViewer` : identité et droits lus dans la fiche **Utilisateurs** de la personne connectée |
+| `softr/build.mjs` | Tailwind limité au bloc + bundle esbuild (JSX gardé, commentaires retirés) → `softr/dist/Block.tsx` et ses lots |
+| `softr/ops.mjs` | opérations search/replace entre deux versions, pour livrer une évolution sans renvoyer 240 Ko |
+
+```bash
+npm run softr:typecheck
+npm run softr:build          # softr/dist/Block.tsx + softr/dist/lots/NN.txt + sha256
+npm run softr:ops -- <ancien Block.tsx>   # softr/dist/ops.json (rejoué et vérifié)
+```
+
+**Le code en ligne est GÉNÉRÉ** : ne pas le modifier dans le Studio. On modifie `src/` ou
+`softr/`, on rebuild, puis on livre par le MCP Softr :
+- évolution : `softr:ops` contre le code en ligne, puis `vibe_coding_block_update_code_search_replace` ;
+- refonte complète : lot 1 par `vibe_coding_block_update_code` suivi de l'export provisoire
+  `ATTENTE`, chaque lot suivant remplace `ATTENTE` par lui-même + `ATTENTE`, le dernier par lui seul
+  (coupures entre modules : chaque état intermédiaire compile).
+Toujours vérifier que `sourceSha256` rendu = sha du build. La mise en ligne **décode les `\uXXXX`** :
+le build refuse tout échappement `\u` et tout caractère invisible (il réécrit les deux cas connus).
+
+### Données
+
+Intégration Airtable Softr `b6a0320b-bc8e-484d-a091-a36cccd97ba5`, base `appYjCP9BUY8Zj5Ni`.
+Sources du bloc : `demandes`, `leads`, `rh`, `secteurs`, `statuts`. Les `q.select` ont pour
+**alias l'identifiant de champ** et pour valeur le **nom** Airtable : les `fields` rendus sont
+indexés par id, comme l'API. `pont.ts` convertit les valeurs Softr (relevé du 23/11/2026) :
+liste simple `{ id, label }` → libellé, lien `[{ id, label }]` → `[id]`, case décochée et vide →
+champ absent (comme l'API). Les écritures partent au même format que l'API (lien = tableau d'ids,
+liste = libellé ; vérifié en réel sur le lead « test test », remis en état).
+- Softr pagine par 100 : chaque table est lue entière (`fetchNextPage` enchaîné) ;
+  `listRecords` rend la dernière lecture si elle a moins de 20 s, sinon relit (bouton « Actualiser »).
+- Softr créerait une option de liste inconnue (`allowToAddNewChoice`) : `pont.ts` refuse avant
+  l'appel un libellé hors `PRIORITIES` / `REGIONS` / `STATUS_ROLES`, comme `typecast: false`.
+- Pas de `createdTime` dans Softr : il ne sert que de repli de date.
+- ⚠️ Écart connu : l'ordre des leads **du même jour** (« Date création » sans heure) diffère de
+  Vercel — Softr départage les ex-aequo autrement que l'API.
+
+### Droits — plus de connexion Google ni de bouton « Activer la modification »
+
+Lus dans **BDD UTILISATEURS · Utilisateurs** (`useCurrentUser`, propriétés Type, Service,
+Accès plateforme sunlib) :
+- **modifier** (fiches, assignation, actions groupées, fusion, sectorisation) : Type « Équipe
+  Sunlib » et accès différent de « Inactif » ;
+- **gérer les statuts** : en plus, Service « Direction » ou « Administratif ».
+Sinon consultation seule (message dans le menu du compte). `pont.ts` refuse l'écriture avant
+l'appel, comme `requireWriter` / `requireAdmin` le faisaient côté serveur.
+Côté Softr, la page et les actions sont réservées aux groupes SUN_* (Commercial, Service
+technique, Service client, Direction, Marketing, Partenaire, Apporteur d'affaires) ; les
+actions de la table Statuts au seul groupe SUN_DIRECTION (il n'existe pas de groupe
+« Administratif »). **Chaque recompile remet les actions à « tous les connectés » : les
+réappliquer après chaque livraison** (`vibe_coding_block_set_action_visibility`).
+
+### Shadow DOM
+
+Le bloc vit dans un Shadow DOM : clic dehors lu par `composedPath()` (AccountButton,
+SearchableSelect), focus par `shadowRoot.activeElement` et dialogues cherchés dans
+`getRootNode()` (useDialog). Ces retouches sont dans `src/` et sans effet sur Vercel.
+La feuille du bloc neutralise la base de Softr (`p { white-space: pre-line }`, graisse 500,
+police des titres) et place les règles propres sous `.sdc-root` : rendu comparé au pixel de
+texte près avec Vercel le 23/11/2026 (onglets Demandes et KPI identiques).

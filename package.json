@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.api.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "softr:typecheck": "tsc --noEmit -p tsconfig.softr.json",
+    "softr:build": "node softr/build.mjs",
+    "softr:ops": "node softr/ops.mjs"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.10",
