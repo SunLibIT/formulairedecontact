@@ -520,7 +520,9 @@ L'app tourne aussi, **à l'identique**, comme bloc vibe coding de l'app Softr **
 Studio : https://studio.softr.io/applications/5d20da4a-9d3f-4702-99a5-4925410aac46/pages/622f8fb1-c181-4737-a33e-f50ed5090053
 La tuile « Demandes de contact » de l'accueil SunLib (SUN_ACCUEIL, onglet Outils) y mène
 depuis le 23/11/2026. Vercel reste en place : le **webhook Typeform** (`api/typeform-webhook`)
-y vit toujours, et les liens des mails d'assignation (champ « Lien de suivi ») y pointent encore.
+y vit toujours. Depuis le 23/11/2026, les liens des mails d'assignation (champ formule « Lien de suivi »,
+Demandes et Leads) ouvrent la page Softr : `https://sunlib.softr.app/suivi-des-demandes?lead=rec…&assignee=me`,
+sans `&email=` (Softr reconnaît la personne). ⚠️ Ils ne marchent qu'une fois l'app CRM 3 publiée.
 
 ### Une seule base de code, un build
 
