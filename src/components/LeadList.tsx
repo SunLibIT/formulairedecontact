@@ -27,7 +27,7 @@ import {
 } from '../lib/format';
 import type { SortField, SortState } from '../lib/filters';
 import type { DuplicateIndex, DuplicateMark } from '../lib/duplicates';
-import { normalisePostalCode } from '../lib/geo';
+import { displayPostalCode } from '../lib/geo';
 import type { Selection } from '../hooks/useSelection';
 import { categoryLabel, duplicateNote, priorityEdge } from '../lib/leadActions';
 import { shortMotive } from '../lib/motives';
@@ -279,7 +279,7 @@ function Row({
   const assignee = lead.assigneeNames.map(formatPersonName).join(', ');
   // Règle partagée avec l'export : un code postal à quatre chiffres est un
   // zéro initial perdu par un tableur, pas un code court.
-  const postalCode = normalisePostalCode(lead.address.postalCode);
+  const postalCode = displayPostalCode(lead.address.postalCode, lead.address.country);
 
 
   return (

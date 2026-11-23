@@ -29,7 +29,13 @@ describe('formatPhone', () => {
   });
 
   it('conserve l’indicatif pour un numéro étranger', () => {
-    expect(formatPhone('+34123456789')).toBe('+34 12 34 56 78 9');
+    expect(formatPhone('+34612345678')).toBe('+34 612 34 56 78');
+    expect(formatPhone('+31644384676')).toBe('+31 644 38 46 76');
+    expect(formatPhone('+41791234567')).toBe('+41 791 23 45 67');
+    expect(formatPhone('+352621123456')).toBe('+352 621 12 34 56');
+    expect(formatPhone('+262692123456')).toBe('+262 692 12 34 56');
+    expect(formatPhone('+447911123456')).toBe('+44 79 11 12 34 56');
+    expect(formatPhone('0031644384676')).toBe('+31 644 38 46 76');
   });
 
   it('renvoie l’entrée telle quelle si elle ne contient aucun chiffre', () => {

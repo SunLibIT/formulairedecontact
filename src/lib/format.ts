@@ -16,13 +16,38 @@
  * `06 12 34 56 78`. Le `+33` est ramené à la forme nationale, qui est celle
  * qu'un commercial lit et compose.
  *
- * International : l'indicatif reste préfixé et le reste est groupé par deux —
- * `+34123456789` donne `+34 12 34 56 78 9`. Faute de connaître le plan de
- * numérotation de chaque pays, on n'invente pas de découpage savant.
+ * International : l'indicatif est reconnu sur sa longueur réelle (1, 2 ou 3
+ * chiffres, selon la table de l'UIT) et le numéro national est groupé par
+ * deux, avec un premier groupe de trois quand il est impair —
+ * `+34612345678` donne `+34 612 34 56 78`, `+31644384676` donne
+ * `+31 644 38 46 76`, `+262692123456` donne `+262 692 12 34 56`. Avant le
+ * 23/11/2026, l'indicatif était toujours pris sur deux chiffres et le reste
+ * coupé par la gauche (« +31 64 43 84 67 6 »).
  *
  * Toute entrée non exploitable est renvoyée telle quelle : mieux vaut un
  * numéro brut lisible qu'un numéro mutilé.
  */
+/**
+ * Longueur de l'indicatif pays (UIT E.164) : 1 chiffre pour la zone 1
+ * (Amérique du Nord) et la 7 (Russie, Kazakhstan), 3 pour les zones dont les
+ * deux premiers chiffres ne forment pas un indicatif complet, 2 sinon.
+ */
+const THREE_DIGIT_PREFIXES = new Set([
+  '21', '22', '23', '24', '25', '26', '29', '35', '37', '38', '42', '50',
+  '59', '67', '68', '69', '80', '85', '87', '88', '96', '97', '99',
+]);
+function countryCodeLength(digits: string): number {
+  if (digits.startsWith('1') || digits.startsWith('7')) return 1;
+  return THREE_DIGIT_PREFIXES.has(digits.slice(0, 2)) ? 3 : 2;
+}
+
+/** Numéro national par deux, premier groupe de trois s'il est impair. */
+function groupNational(n: string): string {
+  const head = n.length % 2 && n.length > 3 ? n.slice(0, 3) : '';
+  const tail = n.slice(head.length).replace(/(\d{2})(?=\d)/g, '$1 ');
+  return head ? `${head} ${tail}` : tail;
+}
+
 export function formatPhone(raw: string): string {
   const trimmed = (raw ?? '').trim();
   if (!trimmed) return '';
@@ -41,10 +66,13 @@ export function formatPhone(raw: string): string {
   if (/^0\d{9}$/.test(digits)) return pairs(digits);
 
   // Autre pays : indicatif conservé, national groupé par deux.
-  if (trimmed.startsWith('+')) {
-    const country = digits.slice(0, 2);
-    const rest = digits.slice(2);
-    return rest ? `+${country} ${pairs(rest)}` : `+${country}`;
+  const international = trimmed.startsWith('+') || trimmed.startsWith('00');
+  if (international) {
+    const all = trimmed.startsWith('00') ? digits.slice(2) : digits;
+    const len = countryCodeLength(all);
+    const country = all.slice(0, len);
+    const rest = all.slice(len);
+    return rest ? `+${country} ${groupNational(rest)}` : `+${country}`;
   }
 
   return pairs(digits);

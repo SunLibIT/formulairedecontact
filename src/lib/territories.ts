@@ -30,7 +30,7 @@
  * historique l'a vide alors que leur code postal est renseigné.
  */
 import { formatPersonName } from './format';
-import { departmentCodeOf, normalisePostalCode } from './geo';
+import { departmentCodeOf, isForeignCountry, normalisePostalCode } from './geo';
 import type { Lead, StaffMember, Territory } from './records';
 
 /** Un secteur — département ou code postal — vu depuis l'interface. */
@@ -132,6 +132,9 @@ export function buildSectorIndex(territories: Territory[]): SectorIndex {
  * des demandes.
  */
 export function sectorForLead(lead: Lead, index: SectorIndex): Sector | null {
+  // Hors de France, le code postal ne désigne aucun département : « 3438 MW »
+  // (Pays-Bas) tombait dans le secteur 03.
+  if (isForeignCountry(lead.address.country)) return null;
   const postalCode = normalisePostalCode(lead.address.postalCode);
   if (postalCode.length === 5) {
     const exact = index.get(postalCode);

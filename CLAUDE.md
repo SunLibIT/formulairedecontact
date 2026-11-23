@@ -608,6 +608,9 @@ L'app suit le Kit de code CRM 3 (Notion), sur Vercel comme dans Softr :
   deux colonnes dès 1024 px (la demande à gauche, le suivi collé à droite) ; tuiles e-mail / téléphone
   avec copie et action ; « Voir sur la carte » ; message en citation ; « Modifications non
   enregistrées » dans le pied ; Ctrl/⌘ + Entrée enregistre.
+- Adresses étrangères (23/11/2026) : pays renseigné et hors France → code postal affiché tel que saisi
+  (`displayPostalCode`, plus de « 03438 » pour « 3438 MW »), aucun secteur déduit (`sectorForLead`).
+  Téléphones étrangers : indicatif sur 1, 2 ou 3 chiffres (UIT), national groupé par deux.
 - `softr/ops.mjs` calcule chaque opération sur le texte tel qu'il sera à son tour (contexte jamais
   pris dans un bloc déjà réécrit).
 

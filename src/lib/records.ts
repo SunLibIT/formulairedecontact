@@ -8,7 +8,7 @@
  * dupliqués par onglet, comme c'était le cas jusqu'ici.
  */
 import type { AirtableRecord } from './airtable';
-import { departmentFromPostalCode, normalisePostalCode } from './geo';
+import { departmentFromPostalCode, displayPostalCode } from './geo';
 import { CONTACT, LEAD, STAFF, TERRITORY, type Priority } from './schema';
 import { DEFAULT_REGISTRY, resolveStatus, type StatusDef, type StatusRegistry } from './statuses';
 
@@ -302,11 +302,12 @@ export function toSolarLead(
  * Localité sur une ligne — « 69100 Villeurbanne ».
  *
  * Le code postal passe par `normalisePostalCode` comme partout ailleurs :
- * affiché brut, un import tableur donnerait « 1000 Bourg-en-Bresse ». Chacun
+ * affiché brut, un import tableur donnerait « 1000 Bourg-en-Bresse ». Sauf à
+ * l'étranger, où il reste tel que saisi (`displayPostalCode`). Chacun
  * des deux morceaux peut manquer sans laisser de blanc.
  */
 export function formatLocality(a: Lead['address']): string {
-  return [normalisePostalCode(a.postalCode), a.city].filter(Boolean).join(' ');
+  return [displayPostalCode(a.postalCode, a.country), a.city].filter(Boolean).join(' ');
 }
 
 /** Adresse sur une ligne, sans virgule orpheline quand un morceau manque. */

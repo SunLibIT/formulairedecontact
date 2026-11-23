@@ -13,6 +13,31 @@
  * existe.
  */
 
+/**
+ * Vrai pour une adresse hors de France (pays renseigné et différent de la
+ * France). Pays vide : France, c'est le cas de la quasi-totalité des demandes
+ * et du simulateur, qui n'a pas de colonne Pays. L'outre-mer est français.
+ */
+export function isForeignCountry(country: string): boolean {
+  const c = (country ?? '')
+    .normalize('NFD')
+    // Diacritiques retir\u00e9s sans \u00e9chappement Unicode : la livraison Softr les d\u00e9code.
+    .replace(new RegExp('[' + String.fromCharCode(768) + '-' + String.fromCharCode(879) + ']', 'g'), '')
+    .trim()
+    .toLowerCase();
+  if (!c) return false;
+  return !/^(france|fr|fra|france metropolitaine|guadeloupe|martinique|guyane|la reunion|reunion|mayotte)$/.test(c);
+}
+
+/**
+ * Code postal à afficher. En France, la forme normalisée (zéro initial
+ * restitué) ; à l'étranger, la saisie telle quelle — « 3438 MW » (Pays-Bas)
+ * devenait « 03438 » et se lisait comme un code de l'Allier.
+ */
+export function displayPostalCode(raw: string, country: string): string {
+  return isForeignCountry(country) ? (raw ?? '').trim() : normalisePostalCode(raw);
+}
+
 /** Cinq chiffres, en restituant le zéro initial mangé par un import Excel. */
 export function normalisePostalCode(raw: string): string {
   const digits = (raw ?? '').replace(/\D/g, '');
