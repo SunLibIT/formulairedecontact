@@ -583,11 +583,34 @@ actions de la table Statuts au seul groupe SUN_DIRECTION (il n'existe pas de gro
 « Administratif »). **Chaque recompile remet les actions à « tous les connectés » : les
 réappliquer après chaque livraison** (`vibe_coding_block_set_action_visibility`).
 
+### Normes CRM 3 (depuis le 23/11/2026)
+
+L'app suit le Kit de code CRM 3 (Notion), sur Vercel comme dans Softr :
+- `src/components/kit.tsx` : tokens `T`, `Deroulant` / `ListeChoix` (menus maison, **plus aucun
+  `<select>` natif**), `Tooltip` + `TooltipRacine` (**plus de `title=`**), `ChampDate` (plus
+  d'`<input type="date">` nu), `Monogram` (teal mat), `capterDefilement`, `hisserCadres`, `tkPress`.
+  `SearchableSelect` garde son API mais ouvre son menu au gabarit du Kit (fixed, zIndex 2500).
+- Variables de `src/index.css` aux valeurs du Kit (canvas #F3F6F7, teal #0E9384…). **Pas de mode
+  sombre** (le CRM 3 n'en a pas).
+- Pop-ups : voile `z-[2000]` (la gestion des statuts `z-[2010]`), au-dessus de la barre basse de
+  Softr sur mobile ; défilement captif dans `useDialog`.
+- Onglets : pastille blanche glissante + barre collée avec fondu (`Tabs`, classes `.sdc-tab*`).
+- Liste : plus de liseré gauche (règle du 09/11) ; la priorité est un point devant le nom.
+- `Sparkles` / `Sparkle` réservés à l'IA : le ton « Nouveau » porte `Inbox`.
+- Pas de `Deroulant` dans un `<label>` (le clic du libellé rouvrirait le menu).
+- ⚠️ `kit.tsx` importe React et lucide **sous des alias propres** (`kUseState`, `KCheck`…) : un nom
+  déjà pris ailleurs fait renuméroter par esbuild les alias de tout le bundle (`useState2` →
+  `useState3`) et le diff de livraison devient le fichier entier. Garder cette règle pour tout
+  nouveau module partagé.
+- `softr/ops.mjs` calcule chaque opération sur le texte tel qu'il sera à son tour (contexte jamais
+  pris dans un bloc déjà réécrit).
+
 ### Shadow DOM
 
 Le bloc vit dans un Shadow DOM : clic dehors lu par `composedPath()` (AccountButton,
 SearchableSelect), focus par `shadowRoot.activeElement` et dialogues cherchés dans
-`getRootNode()` (useDialog). Ces retouches sont dans `src/` et sans effet sur Vercel.
+`getRootNode()` (useDialog). Ces retouches sont dans `src/` et sans effet sur Vercel. Les menus et le clic dehors
+du Kit (`kit.tsx`) suivent la même règle.
 La feuille du bloc neutralise la base de Softr (`p { white-space: pre-line }`, graisse 500,
 police des titres) et place les règles propres sous `.sdc-root` : rendu comparé au pixel de
 texte près avec Vercel le 23/11/2026 (onglets Demandes et KPI identiques).

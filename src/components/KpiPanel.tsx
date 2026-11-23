@@ -158,7 +158,7 @@ export function KpiPanel({
           />
         </label>
 
-        <label className="block min-w-56">
+        <div className="block min-w-56">
           <span className="mb-1.5 block text-xs font-medium text-muted">Collaborateur</span>
           <SearchableSelect
             ariaLabel="Filtrer les indicateurs par collaborateur"
@@ -171,7 +171,7 @@ export function KpiPanel({
               ...staffOptions,
             ]}
           />
-        </label>
+        </div>
 
         {/* Poussé à droite : l'export n'est pas un filtre, il agit sur le
             résultat des deux précédents. */}

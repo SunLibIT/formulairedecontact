@@ -64,22 +64,28 @@ while (i < n || j < m) {
 }
 if (cur) blocs.push(cur);
 
-const texte = (arr, x, y) => arr.slice(x, y).join('');
+const texte = (arr, x, y) => arr.slice(Math.max(0, x), y).join('');
 const ops = [];
+// Chaque opération est calculée sur le texte tel qu'il sera au moment où elle
+// s'applique (blocs précédents déjà remplacés) : son contexte ne peut donc ni
+// viser un texte déjà réécrit, ni devenir ambigu après coup.
 for (const bl of blocs) {
-  // Contexte autour jusqu'à ce que le `search` soit unique dans l'ancien.
+  const T = b.slice(0, bl.b0).concat(a.slice(bl.a0));
+  const courant = T.join('');
+  const x0 = bl.b0;
+  const x1 = bl.b0 + (bl.a1 - bl.a0);
   let avant = 1;
   let apres = 0;
   for (;;) {
-    const s = texte(a, bl.a0 - avant, bl.a1 + apres);
-    const premiere = ancien.indexOf(s);
-    if (s && premiere !== -1 && ancien.indexOf(s, premiere + 1) === -1) break;
+    const s = texte(T, x0 - avant, x1 + apres);
+    const premiere = courant.indexOf(s);
+    if (s && premiere !== -1 && courant.indexOf(s, premiere + 1) === -1) break;
     if (avant <= apres) avant++;
     else apres++;
   }
   ops.push({
-    search: texte(a, bl.a0 - avant, bl.a1 + apres),
-    replace: texte(a, bl.a0 - avant, bl.a0) + texte(b, bl.b0, bl.b1) + texte(a, bl.a1, bl.a1 + apres),
+    search: texte(T, x0 - avant, x1 + apres),
+    replace: texte(T, x0 - avant, x0) + texte(b, bl.b0, bl.b1) + texte(T, x1, x1 + apres),
   });
 }
 

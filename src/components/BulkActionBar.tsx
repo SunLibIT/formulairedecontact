@@ -20,6 +20,7 @@ import {
   type CoverageIndex,
   type Sector,
 } from '../lib/territories';
+import { ListeChoix } from './kit';
 import { SearchableSelect } from './SearchableSelect';
 import { SecondaryButton } from './ui';
 
@@ -142,42 +143,38 @@ export function BulkActionBar({
             />
           </div>
 
-          <label className="flex items-center gap-2 text-xs text-muted">
-            Statut
-            <select
-              className="field w-auto"
-              value=""
-              onChange={(e) => {
-                const status = statuses.byId.get(e.target.value);
-                if (status) void apply({ status });
-              }}
-            >
-              <option value="">—</option>
-              {selectableStatuses(statuses).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <span>Statut</span>
+            <span className="min-w-44">
+              <ListeChoix
+                compact
+                ariaLabel="Statut à appliquer à la sélection"
+                attente="—"
+                value=""
+                onChange={(id) => {
+                  const status = statuses.byId.get(id);
+                  if (status) void apply({ status });
+                }}
+                options={selectableStatuses(statuses).map((st) => ({ v: st.id, l: st.name }))}
+              />
+            </span>
+          </div>
 
-          <label className="flex items-center gap-2 text-xs text-muted">
-            Priorité
-            <select
-              className="field w-auto"
-              value=""
-              onChange={(e) => {
-                if (e.target.value) void apply({ priority: e.target.value as Priority });
-              }}
-            >
-              <option value="">—</option>
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <span>Priorité</span>
+            <span className="min-w-36">
+              <ListeChoix
+                compact
+                ariaLabel="Priorité à appliquer à la sélection"
+                attente="—"
+                value=""
+                onChange={(v) => {
+                  if (v) void apply({ priority: v as Priority });
+                }}
+                options={PRIORITIES.map((p) => ({ v: p, l: p }))}
+              />
+            </span>
+          </div>
 
           {/* Mis en avant à part : c'est la seule action qui touche plusieurs
               enregistrements de façons différentes — l'une complétée, les

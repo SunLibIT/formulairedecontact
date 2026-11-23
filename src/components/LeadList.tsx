@@ -34,6 +34,7 @@ import { shortMotive } from '../lib/motives';
 import type { Lead } from '../lib/records';
 import { TONE_CLASS } from '../lib/tones';
 import { DuplicateBadge, StatusBadge } from './ui';
+import { Tooltip } from './kit';
 
 /** Hauteur d'une ligne, en pixels. Deux lignes de texte plus le rembourrage. */
 const ROW_HEIGHT = 56;
@@ -297,10 +298,9 @@ function Row({
       className={`${GRID} group h-full cursor-pointer border-b border-line px-3 ${
         selection?.isSelected(lead.id) ? 'bg-teal-soft' : 'hover:bg-canvas'
       }`}
-      // Liseré sur toutes les lignes, sans exception : voir priorityEdge.
-      style={{ boxShadow: `inset 3px 0 0 0 ${priorityEdge(lead)}` }}
     >
-      {/* Le liseré est une couleur : on double par du texte masqué. */}
+      {/* Plus de liseré à gauche (règle CRM 3 du 09/11/2026) : la priorité est
+          un point de couleur devant le nom, doublé par du texte masqué. */}
       <span className="sr-only">Priorité {lead.priority}.</span>
 
       <div role="cell" className="flex items-center justify-center">
@@ -323,8 +323,15 @@ function Row({
 
       {/* Nom — deux lignes : l'identité, puis le profil du demandeur. */}
       <div role="cell" className="min-w-0">
-        <p className="min-w-0 truncate text-sm font-semibold text-ink">
-          {formatPersonName(lead.fullName)}
+        <p className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink">
+          <Tooltip content={`Priorité ${lead.priority}`}>
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ background: priorityEdge(lead) }}
+            />
+          </Tooltip>
+          <span className="min-w-0 truncate">{formatPersonName(lead.fullName)}</span>
         </p>
         <p className="min-w-0 truncate text-xs text-muted">
           {[categoryLabel(lead), lead.company].filter(Boolean).join(' · ') || '—'}
@@ -332,9 +339,9 @@ function Row({
       </div>
 
       <div role="cell" className="min-w-0">
-        <p className="truncate text-xs text-ink" title={lead.motive}>
+        <Tooltip content={lead.motive}><p className="truncate text-xs text-ink">
           {shortMotive(lead.motive) || '—'}
-        </p>
+        </p></Tooltip>
       </div>
 
       {/* Coordonnées — e-mail et téléphone ensemble, comme dans la carte. Le
@@ -344,14 +351,13 @@ function Row({
       <div role="cell" className="min-w-0">
         {lead.email && (
           <span className="flex min-w-0 items-center gap-1.5">
-            <a
+            <Tooltip content={lead.email}><a
               href={`mailto:${lead.email}`}
               onClick={stop}
-              title={lead.email}
               className="min-w-0 truncate text-xs text-teal-ink hover:underline"
             >
               {lead.email}
-            </a>
+            </a></Tooltip>
             {/* Contre l'adresse : c'est elle qui rassemble le groupe. */}
             {duplicate && (
               <DuplicateBadge
@@ -387,15 +393,15 @@ function Row({
           <>
             <p className="text-xs font-semibold tabular-nums text-ink">{postalCode}</p>
             {lead.address.city && (
-              <p className="truncate text-xs text-muted" title={lead.address.city}>
+              <Tooltip content={lead.address.city}><p className="truncate text-xs text-muted">
                 {lead.address.city}
-              </p>
+              </p></Tooltip>
             )}
           </>
         ) : (
-          <p className="truncate text-xs text-ink" title={lead.address.city || undefined}>
+          <Tooltip content={lead.address.city || undefined}><p className="truncate text-xs text-ink">
             {lead.address.city || '—'}
-          </p>
+          </p></Tooltip>
         )}
       </div>
 
@@ -406,12 +412,11 @@ function Row({
       </div>
 
       <div role="cell" className="text-right">
-        <span
+        <Tooltip content={`Reçue il y a ${days ?? '?'} jour(s)`}><span
           className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${TONE_CLASS[tone]}`}
-          title={`Reçue il y a ${days ?? '?'} jour(s)`}
         >
           {formatAge(days)}
-        </span>
+        </span></Tooltip>
       </div>
 
       <div role="cell" className={`min-w-0 ${HIDE_NARROW}`}>

@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_STATUSES, STATUS } from '../lib/schema';
+import { DEFAULT_STATUSES, ROLE_LABEL, STATUS } from '../lib/schema';
 import type { StatusDef } from '../lib/statuses';
 import { StatusManagerModal } from './StatusManagerModal';
 
@@ -26,6 +26,12 @@ const custom: StatusDef = {
   archived: false,
   role: null,
 };
+
+/** Choisit une option d'un menu du Kit (`ListeChoix`) : ouverture au clavier, choix au mousedown. */
+function choisir(bouton: HTMLElement, libelle: string) {
+  fireEvent.click(bouton, { detail: 0 });
+  fireEvent.mouseDown(screen.getByRole('option', { name: libelle }), { button: 0 });
+}
 
 /** Hôte qui garde le registre, comme `useStatuses` : les écritures s'y cumulent. */
 function Host({
@@ -135,9 +141,9 @@ describe('StatusManagerModal', () => {
   it('déplace un rôle : il est retiré à celui qui le portait', async () => {
     echo();
     render(<Host />);
-    const selects = screen.getAllByLabelText('Rôle') as HTMLSelectElement[];
+    const menus = screen.getAllByRole('button', { name: 'Rôle' });
     // Dernière ligne active : le statut ajouté.
-    fireEvent.change(selects[DEFAULT_STATUSES.length], { target: { value: 'nouveau' } });
+    choisir(menus[DEFAULT_STATUSES.length], ROLE_LABEL.nouveau);
     await waitFor(() => expect(updateRecord).toHaveBeenCalledTimes(2));
     expect(updateRecord.mock.calls[0]).toEqual([
       expect.any(String),
@@ -160,9 +166,7 @@ describe('StatusManagerModal', () => {
     expect(confirm.disabled).toBe(true);
     expect(screen.getByText(/4 demandes le portent/)).toBeTruthy();
 
-    fireEvent.change(screen.getByDisplayValue('— choisir un statut —'), {
-      target: { value: DEFAULT_STATUSES[2].id },
-    });
+    choisir(screen.getByRole('button', { name: 'Statut de bascule' }), DEFAULT_STATUSES[2].name);
     fireEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     await waitFor(() => expect(deleteRecord).toHaveBeenCalledWith(expect.any(String), custom.id));
     expect(onReassign).toHaveBeenCalledWith(
@@ -181,9 +185,7 @@ describe('StatusManagerModal', () => {
     });
     render(<Host onReassign={onReassign} />);
     fireEvent.click(screen.getByRole('button', { name: 'Supprimer Rendez-vous fixé' }));
-    fireEvent.change(screen.getByDisplayValue('— choisir un statut —'), {
-      target: { value: DEFAULT_STATUSES[2].id },
-    });
+    choisir(screen.getByRole('button', { name: 'Statut de bascule' }), DEFAULT_STATUSES[2].name);
     fireEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     await waitFor(() => expect(screen.getByText(/suppression annulée/)).toBeTruthy());
     expect(deleteRecord).not.toHaveBeenCalled();
@@ -200,7 +202,7 @@ describe('StatusManagerModal', () => {
       target: { value: 'À rappeler' },
     });
     const group = screen.getByRole('group', { name: 'Couleur du nouveau statut' });
-    fireEvent.click(group.querySelector('[title="Rose"]')!);
+    fireEvent.click(group.querySelector('[aria-label^="Rose"]')!);
     fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }));
 
     await waitFor(() => expect(names()).toContain('À rappeler'));
@@ -236,7 +238,7 @@ describe('StatusManagerModal', () => {
     });
     render(<Host />);
     const group = screen.getByRole('group', { name: 'Couleur du statut A relancer' });
-    fireEvent.click(group.querySelector('[title="Rose"]')!);
+    fireEvent.click(group.querySelector('[aria-label^="Rose"]')!);
 
     await waitFor(() => expect(screen.getByText(/réponse est illisible/)).toBeTruthy());
     expect(names()).toContain('A relancer');

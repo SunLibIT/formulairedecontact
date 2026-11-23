@@ -3,8 +3,7 @@
  *
  * Points de charte appliqués ici, et qui étaient violés dans la version
  * précédente :
- *  - un élément actif ne porte ni bordure ni liseré : onglet actif = simple
- *    soulignement teal ;
+ *  - onglets du CRM 3 : pastille blanche glissante, barre collée (Kit §10) ;
  *  - le sens n'est jamais porté par la couleur seule : chaque badge de statut
  *    porte aussi une icône et son libellé ;
  *  - le dégradé de marque est réservé au bouton d'action principale ;
@@ -27,6 +26,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import {
@@ -38,6 +38,7 @@ import {
 import type { DuplicateNote } from '../lib/leadActions';
 import { TONE_ACCENT, TONE_CLASS, TONE_ICON, statusAccentStyle } from '../lib/tones';
 import { statusChipStyle } from '../lib/tones';
+import { Tooltip } from './kit';
 
 /* ------------------------------------------------------------------ badges */
 
@@ -141,10 +142,10 @@ export function DuplicateBadge({
 
   if (!onArchive) {
     return (
-      <span title={note.title} className={`${shape} ${tone}`}>
+      <Tooltip content={note.title}><span className={`${shape} ${tone}`}>
         <Copy className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
         {note.label}
-      </span>
+      </span></Tooltip>
     );
   }
 
@@ -204,9 +205,8 @@ export function DuplicateBadge({
   }
 
   return (
-    <button
+    <Tooltip content={failure || note.title}><button
       type="button"
-      title={failure || note.title}
       aria-label={failure ? `${failure} ${note.archiveLabel}` : note.archiveLabel}
       onClick={(e) => {
         stop(e);
@@ -223,7 +223,7 @@ export function DuplicateBadge({
         <Copy className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
       )}
       {failure ? 'Échec' : note.label}
-    </button>
+    </button></Tooltip>
   );
 }
 
@@ -296,11 +296,21 @@ export interface TabItem {
   id: string;
   label: string;
   count?: number;
+  icon?: LucideIcon;
 }
 
+/** Étirement maximal de la pastille sur la plus longue course (Kit CRM 3 §10 ter). */
+const ETIRE_MAX = 0.14;
+/** Hauteur du fondu sous la barre collée (Kit CRM 3 §10 bis, 27/10/2026). */
+const FONDU_COLLE = 36;
+
 /**
- * Onglets de navigation de contenu : soulignement teal sur l'actif, aucune
- * bordure ni encadré. Navigation clavier par flèches, comme l'exige la charte.
+ * Barre d'onglets du CRM 3 (Kit §10 bis / ter, reprise de TICKETING le
+ * 23/11/2026) : pastille blanche qui glisse d'un onglet à l'autre en
+ * s'étirant, barre collée en haut au défilement, fond de page peint en pleine
+ * largeur et fondu sous le filet une fois collée. Aucune géométrie ne dépend
+ * d'une mesure (sinon la page tremble) : le fond est peint par `border-image`.
+ * Navigation clavier par flèches.
  */
 export function Tabs({
   items,
@@ -312,6 +322,16 @@ export function Tabs({
   onChange: (id: string) => void;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const barre = useRef<HTMLDivElement | null>(null);
+  const repere = useRef<HTMLDivElement | null>(null);
+  const cadre = useRef<HTMLDivElement | null>(null);
+  const [ind, setInd] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [elan, setElan] = useState<{ cle: number; sx: number } | null>(null);
+  const depart = useRef<{ x: number; y: number } | null>(null);
+  const [colle, setColle] = useState(false);
+  const [gauche, setGauche] = useState(0);
+  const index = Math.max(0, items.findIndex((t) => t.id === value));
+  const empreinte = items.map((t) => `${t.id}:${t.count ?? ''}`).join('|');
 
   const move = (from: number, delta: number) => {
     const next = (from + delta + items.length) % items.length;
@@ -319,46 +339,133 @@ export function Tabs({
     refs.current[next]?.focus();
   };
 
+  useLayoutEffect(() => {
+    const bar = barre.current;
+    const btn = refs.current[index];
+    if (!bar || !btn) return;
+    const mesurer = (deplacement: boolean) => {
+      const c = { x: btn.offsetLeft, y: btn.offsetTop, w: btn.offsetWidth, h: btn.offsetHeight };
+      setInd((p) => (p && p.x === c.x && p.y === c.y && p.w === c.w && p.h === c.h ? p : c));
+      const d0 = depart.current;
+      if (deplacement && d0 && (d0.x !== c.x || d0.y !== c.y)) {
+        const course = Math.max(1, bar.scrollWidth - c.w);
+        const part = Math.sqrt(Math.min(1, Math.hypot(c.x - d0.x, c.y - d0.y) / course));
+        setElan((e) => ({ cle: (e?.cle ?? 0) + 1, sx: 1 + ETIRE_MAX * part }));
+      }
+      depart.current = { x: c.x, y: c.y };
+    };
+    mesurer(true);
+    if (typeof ResizeObserver === 'undefined') return;
+    const obs = new ResizeObserver(() => mesurer(false));
+    obs.observe(bar);
+    return () => obs.disconnect();
+  }, [index, empreinte]);
+
+  useEffect(() => {
+    const el = repere.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      ([e]) => setColle(!e.isIntersecting && e.boundingClientRect.top < 0),
+      { rootMargin: '0px 0px 100000px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // Le fond peint déborde à gauche jusqu'au bord du bloc, pas au-delà
+  // (dans Softr, il passerait sur le menu latéral).
+  useEffect(() => {
+    const el = cadre.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const racine = el.closest('.sdc-root') ?? document.body;
+    const mesure = () => {
+      const g = Math.max(0, Math.round(el.getBoundingClientRect().left - racine.getBoundingClientRect().left));
+      setGauche((p) => (p === g ? p : g));
+    };
+    mesure();
+    const ro = new ResizeObserver(mesure);
+    ro.observe(racine);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <div role="tablist" aria-label="Sources de demandes" className="flex gap-6 border-b border-line">
-      {items.map((item, i) => {
-        const active = item.id === value;
-        return (
-          <button
-            key={item.id}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            role="tab"
-            aria-selected={active}
-            tabIndex={active ? 0 : -1}
-            onClick={() => onChange(item.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowRight') move(i, 1);
-              if (e.key === 'ArrowLeft') move(i, -1);
-              if (e.key === 'Home') move(0, 0);
-              if (e.key === 'End') move(items.length - 1, 0);
-            }}
-            className={`-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 pt-2 text-sm transition-colors ${
-              active
-                ? 'border-teal font-bold text-teal-ink'
-                : 'border-transparent font-medium text-muted hover:text-ink'
-            }`}
-          >
-            {item.label}
-            {item.count !== undefined && (
+    <>
+      <div ref={repere} aria-hidden="true" style={{ height: 1, marginBottom: -1 }} />
+      <div
+        ref={cadre}
+        className="sdc-tabbar"
+        style={{
+          borderImage: 'linear-gradient(to bottom, var(--bg) calc(100% - 1px), var(--line) 0) fill 0 / 0 / 0 100vmax',
+          clipPath: `inset(0 -100vmax -${FONDU_COLLE + 4}px -${gauche}px)`,
+        }}
+      >
+        <span aria-hidden="true" className="sdc-fondu" style={{ height: FONDU_COLLE, opacity: colle ? 1 : 0 }} />
+        <div ref={barre} role="tablist" aria-label="Sources de demandes" className="relative flex flex-wrap gap-1">
+          {ind && (
+            <span
+              aria-hidden="true"
+              className="sdc-ind"
+              style={{ transform: `translate3d(${ind.x}px, ${ind.y}px, 0)`, width: ind.w, height: ind.h }}
+            >
               <span
-                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  active ? 'bg-teal-soft text-teal-ink' : 'border border-line text-muted'
-                }`}
+                key={elan?.cle ?? 'pose'}
+                className={elan ? 'sdc-ind-i sdc-ind-elan' : 'sdc-ind-i'}
+                style={elan ? ({ '--sdc-sx': elan.sx } as CSSProperties) : undefined}
+              />
+            </span>
+          )}
+          {items.map((item, i) => {
+            const active = item.id === value;
+            const Icon = item.icon;
+            // Avant la première mesure, l'onglet actif porte lui-même la pastille.
+            const porte = active && !ind;
+            return (
+              <button
+                key={item.id}
+                ref={(el) => {
+                  refs.current[i] = el;
+                }}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                tabIndex={active ? 0 : -1}
+                onClick={() => onChange(item.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowRight') move(i, 1);
+                  if (e.key === 'ArrowLeft') move(i, -1);
+                  if (e.key === 'Home') move(0, 0);
+                  if (e.key === 'End') move(items.length - 1, 0);
+                }}
+                className={porte ? 'sdc-tab sdc-tab-porte' : 'sdc-tab'}
+                style={{ color: active ? 'var(--teal-ink)' : 'var(--muted)' }}
               >
-                {item.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
+                {Icon && (
+                  <Icon
+                    className="sdc-tab-i"
+                    style={{ width: 16, height: 16, color: active ? 'var(--teal)' : undefined }}
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                )}
+                {item.label}
+                {item.count !== undefined && (
+                  <span
+                    className="rounded-full px-[7px] py-[3px] text-[11.5px] font-bold leading-none"
+                    style={{
+                      background: active ? 'var(--teal-soft)' : '#f1f4f7',
+                      color: active ? 'var(--teal-ink)' : 'var(--muted)',
+                    }}
+                  >
+                    {item.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -606,7 +713,7 @@ export function TopProgressBar({ active }: { active: boolean }) {
   return (
     <div
       aria-hidden="true"
-      className={`fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden transition-opacity duration-200 ${
+      className={`fixed inset-x-0 top-0 z-[1990] h-0.5 overflow-hidden transition-opacity duration-200 ${
         active ? 'opacity-100' : 'pointer-events-none opacity-0'
       }`}
     >
@@ -791,5 +898,5 @@ export function RelativeDate({ iso }: { iso: string }) {
           ? rtf.format(-Math.round(days / 30), 'month')
           : rtf.format(-Math.round(days / 365), 'year');
 
-  return <time dateTime={iso} title={absolute}>{label}</time>;
+  return <Tooltip content={absolute}><time dateTime={iso}>{label}</time></Tooltip>;
 }

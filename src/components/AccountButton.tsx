@@ -17,6 +17,7 @@
 import { ChevronDown, Lock, LogOut, Map, Settings2, ShieldCheck, ShieldX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AdminAuth } from '../hooks/useAdminAuth';
+import { Monogram, Tooltip } from './kit';
 
 export function AccountButton({
   auth,
@@ -56,11 +57,10 @@ export function AccountButton({
 
   if (!auth.session) {
     return (
-      <button
+      <Tooltip content="Se connecter pour pouvoir modifier"><button
         type="button"
         onClick={() => void auth.signIn()}
         disabled={auth.busy}
-        title="Se connecter pour pouvoir modifier"
         className="inline-flex items-center gap-2 rounded-control border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Lock className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden="true" />
@@ -70,13 +70,12 @@ export function AccountButton({
           {auth.busy ? 'Connexion…' : 'Activer la modification'}
         </span>
         <span className="sr-only sm:hidden">Activer la modification</span>
-      </button>
+      </button></Tooltip>
     );
   }
 
   const { email, name, canWrite } = auth.session;
   const label = name.trim() || email;
-  const initial = (label.trim()[0] ?? '?').toUpperCase();
 
   return (
     <div ref={container} className="relative">
@@ -87,12 +86,8 @@ export function AccountButton({
         aria-expanded={open}
         className="inline-flex items-center gap-2 rounded-control px-1.5 py-1.5 transition-colors hover:bg-canvas"
       >
-        <span
-          aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-soft text-sm font-bold text-teal-ink"
-        >
-          {initial}
-        </span>
+        {/* Rond d'initiales du CRM 3 : aplat teal mat (Kit, 30/09). */}
+        <Monogram name={label} size={32} />
         <span className="hidden max-w-[12rem] truncate text-sm font-medium text-ink sm:inline">
           {label}
         </span>

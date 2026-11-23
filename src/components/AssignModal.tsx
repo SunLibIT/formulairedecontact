@@ -119,7 +119,7 @@ export function AssignModal({
 
   return (
     <div
-      className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="modal-overlay fixed inset-0 z-[2000] flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -261,7 +261,7 @@ export function AssignModal({
             </PrimaryButton>
           )}
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted">
               {showSelfShortcut ? 'Ou choisir un collaborateur' : 'Collaborateur'}
             </span>
@@ -276,7 +276,7 @@ export function AssignModal({
                 groups={staffGroups(sector)}
               />
             </div>
-          </label>
+          </div>
 
           {/* Fiche sans adresse : l'assignation s'écrira, mais le mail que
               l'automatisation Airtable envoie au commercial n'aura pas de

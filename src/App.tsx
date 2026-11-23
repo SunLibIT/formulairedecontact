@@ -9,11 +9,14 @@
  */
 import {
   AlertTriangle,
+  BarChart3,
   FilterX,
   Inbox,
   Link2Off,
+  Mail,
   RefreshCw,
   ShieldAlert,
+  Sun,
   Trash2,
   UserX,
 } from 'lucide-react';
@@ -24,6 +27,7 @@ import { BulkActionBar, type BulkPatch } from './components/BulkActionBar';
 import { ExportButton } from './components/ExportButton';
 import { FilterBar } from './components/FilterBar';
 import { KpiPanel } from './components/KpiPanel';
+import { TooltipRacine } from './components/kit';
 import { LeadCard } from './components/LeadCard';
 import { LeadList } from './components/LeadList';
 import { LeadModal } from './components/LeadModal';
@@ -466,7 +470,7 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-canvas">
+    <TooltipRacine className="min-h-screen bg-canvas">
       {/* Visible où que l'on soit dans la page, contrairement au spinner du
           bouton « Actualiser ». Couvre les deux tables : basculer d'onglet
           pendant un chargement doit rester lisible. */}
@@ -546,9 +550,9 @@ export default function App() {
             setVisible(PAGE);
           }}
           items={[
-            { id: 'contact', label: TAB_LABEL.contact, count: contact.leads.length },
-            { id: 'solar', label: TAB_LABEL.solar, count: solar.leads.length },
-            { id: 'kpi', label: TAB_LABEL.kpi },
+            { id: 'contact', label: TAB_LABEL.contact, count: contact.leads.length, icon: Mail },
+            { id: 'solar', label: TAB_LABEL.solar, count: solar.leads.length, icon: Sun },
+            { id: 'kpi', label: TAB_LABEL.kpi, icon: BarChart3 },
           ]}
         />
 
@@ -810,6 +814,6 @@ export default function App() {
           onClose={() => setStatusesOpen(false)}
         />
       )}
-    </div>
+    </TooltipRacine>
   );
 }

@@ -45,6 +45,7 @@ import {
   type StatusRole,
 } from '../lib/schema';
 import { FALLBACK_COLOR, byOrder, normaliseHex, toStatusDef, type StatusDef } from '../lib/statuses';
+import { ListeChoix, Tooltip } from './kit';
 import { Callout, PrimaryButton, SecondaryButton, StatusBadge } from './ui';
 
 type Update = (change: (prev: StatusDef[]) => StatusDef[]) => void;
@@ -220,7 +221,7 @@ export function StatusManagerModal({
 
   return (
     <div
-      className="modal-overlay fixed inset-0 z-[60] flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="modal-overlay fixed inset-0 z-[2010] flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -462,23 +463,19 @@ function StatusRow({
           onChange={onColor}
         />
         <div className="flex items-center gap-2">
-          <label htmlFor={roleId} className="text-xs font-medium text-muted">
+          <span id={roleId} className="text-xs font-medium text-muted">
             Rôle
-          </label>
-          <select
-            id={roleId}
-            className="field w-auto py-1 text-xs"
-            value={status.role ?? ''}
-            disabled={locked}
-            onChange={(e) => onRole((e.target.value || null) as StatusRole | null)}
-          >
-            <option value="">Aucun</option>
-            {STATUS_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABEL[r]}
-              </option>
-            ))}
-          </select>
+          </span>
+          <span className="min-w-[13rem]">
+            <ListeChoix
+              compact
+              ariaLabel="Rôle"
+              value={status.role ?? ''}
+              disabled={locked}
+              onChange={(v) => onRole((v || null) as StatusRole | null)}
+              options={[{ v: '', l: 'Aucun' }, ...STATUS_ROLES.map((r) => ({ v: r, l: ROLE_LABEL[r] }))]}
+            />
+          </span>
         </div>
       </div>
 
@@ -513,23 +510,21 @@ function StatusRow({
             {status.role && ` La règle « ${ROLE_LABEL[status.role].split(' —')[0]} » ne s’appliquera plus tant qu’aucun autre statut ne la reprend.`}
           </span>
           {count > 0 && (
-            <label className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <span>
                 {count} demande{count > 1 ? 's le portent' : ' le porte'} : basculer vers
               </span>
-              <select
-                className="field w-auto py-1 text-xs"
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-              >
-                <option value="">— choisir un statut —</option>
-                {others.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <span className="min-w-[12rem]">
+                <ListeChoix
+                  compact
+                  ariaLabel="Statut de bascule"
+                  attente="— choisir un statut —"
+                  value={target}
+                  onChange={setTarget}
+                  options={others.map((o) => ({ v: o.id, l: o.name }))}
+                />
+              </span>
+            </div>
           )}
         </ConfirmBar>
       )}
@@ -694,19 +689,18 @@ function ColorPicker({
         {STATUS_COLOR_PRESETS.map((p) => {
           const checked = p.color === value;
           return (
-            <button
+            <Tooltip content={p.label}><button
               key={p.color}
               type="button"
               aria-label={`${p.label}${checked ? ' (actuelle)' : ''}`}
               aria-pressed={checked}
-              title={p.label}
               disabled={disabled}
               onClick={() => !checked && onChange(p.color)}
               className={`h-5 w-5 rounded-full transition-shadow focus-visible:shadow-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
                 checked ? 'ring-2 ring-ink ring-offset-1 ring-offset-surface' : ''
               }`}
               style={{ backgroundColor: p.color }}
-            />
+            /></Tooltip>
           );
         })}
       </span>
@@ -769,10 +763,9 @@ function IconButton({
   tone?: 'default' | 'danger';
 }) {
   return (
-    <button
+    <Tooltip content={label}><button
       type="button"
       aria-label={label}
-      title={label}
       onClick={onClick}
       disabled={disabled}
       className={`rounded-control p-1.5 transition-colors focus-visible:shadow-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -780,6 +773,6 @@ function IconButton({
       }`}
     >
       <Icon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-    </button>
+    </button></Tooltip>
   );
 }

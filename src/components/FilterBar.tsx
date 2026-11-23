@@ -13,6 +13,7 @@ import { FilterX } from 'lucide-react';
 import type { Stats } from '../lib/filters';
 import { ALL, countActiveFilters, type FilterState } from '../lib/filters';
 import { PRIORITIES, type Priority } from '../lib/schema';
+import { ListeChoix, type ChoixDeroulant } from './kit';
 import { SearchableSelect } from './SearchableSelect';
 import { SecondaryButton, SearchField } from './ui';
 
@@ -76,46 +77,33 @@ export function FilterBar({
           label="Statut"
           value={filters.status}
           onChange={(v) => onChange({ status: v })}
-        >
-          <option value={ALL}>Tous ({stats.total})</option>
-          {statuses.map(({ status, count }) => (
-            <option key={status.id} value={status.id}>
-              {status.name} ({count})
-            </option>
-          ))}
-        </Select>
+          options={[
+            { v: ALL, l: `Tous (${stats.total})` },
+            ...statuses.map(({ status, count }) => ({ v: status.id, l: `${status.name} (${count})` })),
+          ]}
+        />
 
         <Select
           label="Priorité"
           value={filters.priority}
           onChange={(v) => onChange({ priority: v as Priority | typeof ALL })}
-        >
-          <option value={ALL}>Toutes</option>
-          {PRIORITIES.filter((p) => stats.byPriority[p] > 0).map((p) => (
-            <option key={p} value={p}>
-              {p} ({stats.byPriority[p]})
-            </option>
-          ))}
-        </Select>
+          options={[
+            { v: ALL, l: 'Toutes' },
+            ...PRIORITIES.filter((p) => stats.byPriority[p] > 0).map((p) => ({ v: p, l: `${p} (${stats.byPriority[p]})` })),
+          ]}
+        />
 
         {options.categories.length > 0 && (
           <Select
             label="Type"
             value={filters.category}
             onChange={(v) => onChange({ category: v })}
-          >
-            <option value={ALL}>Tous</option>
-            {options.categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
+            options={[{ v: ALL, l: 'Tous' }, ...options.categories.map((c) => ({ v: c, l: c }))]}
+          />
         )}
 
-        {/* Recherche et tri alphabétique : la liste peut compter 35 entrées,
-            un select natif se parcourt à l'œil. */}
-        <label className="block min-w-52">
+        {/* Recherche et tri alphabétique : la liste peut compter 35 entrées. */}
+        <div className="block min-w-52">
           <span className="mb-1.5 block text-xs font-medium text-muted">Assigné à</span>
           <SearchableSelect
             ariaLabel="Filtrer par collaborateur assigné"
@@ -128,17 +116,18 @@ export function FilterBar({
               ...options.assignees.map((a) => ({ value: a.id, label: a.name })),
             ]}
           />
-        </label>
+        </div>
 
         {duplicateAddresses > 0 && (
           <Select
             label="Doublons"
             value={filters.duplicates}
             onChange={(v) => onChange({ duplicates: v as FilterState['duplicates'] })}
-          >
-            <option value="all">Tous</option>
-            <option value="only">En doublon ({duplicateAddresses})</option>
-          </Select>
+            options={[
+              { v: 'all', l: 'Tous' },
+              { v: 'only', l: `En doublon (${duplicateAddresses})` },
+            ]}
+          />
         )}
 
         {options.partners.length > 0 && (
@@ -146,14 +135,8 @@ export function FilterBar({
             label="Partenaire"
             value={filters.partner}
             onChange={(v) => onChange({ partner: v })}
-          >
-            <option value={ALL}>Tous</option>
-            {options.partners.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </Select>
+            options={[{ v: ALL, l: 'Tous' }, ...options.partners.map((p) => ({ v: p, l: p }))]}
+          />
         )}
 
       </div>
@@ -161,23 +144,25 @@ export function FilterBar({
   );
 }
 
+/**
+ * Filtre à choix unique : menu `ListeChoix` du Kit CRM 3 (plus de `<select>`
+ * natif). Pas de `<label>` autour : un clic sur le libellé rouvrirait le menu.
+ */
 function Select({
   label,
   value,
   onChange,
-  children,
+  options,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  children: React.ReactNode;
+  options: ChoixDeroulant[];
 }) {
   return (
-    <label className="block">
+    <div className="block min-w-40">
       <span className="mb-1.5 block text-xs font-medium text-muted">{label}</span>
-      <select className="field w-auto" value={value} onChange={(e) => onChange(e.target.value)}>
-        {children}
-      </select>
-    </label>
+      <ListeChoix ariaLabel={`Filtrer par ${label.toLowerCase()}`} value={value} onChange={onChange} options={options} style={{ fontSize: '14px' }} />
+    </div>
   );
 }

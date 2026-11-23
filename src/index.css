@@ -12,113 +12,55 @@
  *  - un élément actif ne porte JAMAIS de bordure ni de liseré ;
  *  - le reste de l'interface est plat.
  */
+/*
+ * Depuis le 23/11/2026 : valeurs du Kit de code CRM 3 (tokens `T`), pour que
+ * la page « Suivi des demandes » rende comme le reste du CRM. Les noms des
+ * variables ne changent pas : toutes les classes existantes suivent.
+ * Pas de mode sombre : le CRM 3 n'en a pas (règle du Kit).
+ */
 :root {
-  /* Marque — dégradé réservé à l'action principale */
-  --brand-gradient: linear-gradient(90deg, #13a3ac, #3cae68);
-  --teal: #0ea3b4;
-  --teal-deep: #13a3ac;
-  --teal-ink: #0b7880;
-  --teal-soft: #e3f4f6;
-  --green: #3cae68;
-  --green-bright: #60b830;
-  --green-soft: #eaf8ef;
+  /* Marque — dégradé du bouton principal (CBTN_TEAL du Kit) */
+  --brand-gradient: linear-gradient(180deg, #13a394, #0e9384);
+  --teal: #0e9384;
+  --teal-deep: #0b7a6e;
+  --teal-ink: #0a5f56;
+  --teal-soft: #ebf8f6;
+  --green: #12a150;
+  --green-bright: #0d7a3c;
+  --green-soft: #e8f7ef;
 
   /* Neutres */
-  --ink: #0f1729;
-  --muted: #5b6472;
-  --line: #e6eaef;
+  --ink: #101a28;
+  --muted: #6a7686;
+  --line: #eaeef0;
   --surface: #ffffff;
-  --bg: #f6f8fa;
+  --bg: #f3f6f7;
 
-  /* Sémantiques */
-  --amber: #b45309;
-  --amber-bg: #fef3c7;
-  --amber-border: #fce8b2;
-
-  /* Second pas, plus clair, de la même teinte ambre.
-     « À contacter » puis « À relancer » est une progression : une rampe
-     d'une seule teinte fait voir l'ordre dans la couleur, là où deux teintes
-     distinctes suggéreraient deux catégories sans rapport.
-     Validé en rampe ordinale : lightness monotone, écart suffisant,
-     extrémité claire à 3,10:1 sur le fond. */
+  /* Sémantiques. « À contacter » puis « À relancer » : rampe d'une seule
+     teinte ambre, pour que l'ordre se lise dans la couleur. */
+  --amber: #a15c05;
+  --amber-bg: #fcf1e1;
+  --amber-border: #f6dcb4;
   --amber-soft: #d97706;
-  --amber-soft-bg: #fffbeb;
-  --amber-soft-border: #fde68a;
+  --amber-soft-bg: #fef5e6;
+  --amber-soft-border: #fce9c4;
   --red: #b91c1c;
   --red-bg: #fef2f2;
   --red-border: #fbd0d0;
-  --info: #1d4ed8;
-  --info-bg: #eff4ff;
-  --info-border: #cbdbff;
+  --info: #2b5fd0;
+  --info-bg: #ecf2fe;
+  --info-border: #cddcfc;
 
-  /* « Signé » — l'aboutissement du suivi commercial.
-     Ni vert ni teal, qui sont déjà pris : le vert de marque porte « Nouveau »
-     et le teal signale l'élément actif. Le violet est la seule teinte libre
-     qui se distingue des cinq autres statuts sans se confondre avec un état
-     d'interface. Contraste 8,6:1 sur son fond en clair, 7,4:1 en sombre. */
+  /* « Signé » : seule teinte libre, distincte des cinq autres statuts. */
   --violet: #6d28d9;
   --violet-bg: #f5f3ff;
   --violet-border: #ddd6fe;
 
-  /* Base */
-  --radius: 14px;
-  --radius-sm: 10px;
-  --focus: 0 0 0 3px rgb(14 163 180 / 0.3);
+  /* Base (rayons rLg / rMd du Kit) */
+  --radius: 15px;
+  --radius-sm: 11px;
+  --focus: 0 0 0 3px rgb(14 147 132 / 0.25);
   --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-}
-
-/**
- * Mode sombre.
- *
- * Pas une inversion automatique : chaque valeur est choisie puis vérifiée au
- * contraste contre la surface sombre. Le plus faible ratio du jeu est 5,81:1
- * (rouge sur carte), au-delà du 4,5:1 exigé pour du texte courant.
- *
- * La rampe ambre garde son ordre en sombre — « À contacter » plus clair
- * (9,08:1) que « À relancer » (5,88:1) — donc la progression reste lisible.
- *
- * Piloté par la préférence système seule : l'application est embarquée dans
- * Softr et n'a pas de bascule. En ajouter une demanderait de dupliquer ce bloc
- * sous `:root[data-theme="dark"]`.
- */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --teal: #35c2d4;
-    --teal-deep: #2bb3c4;
-    --teal-ink: #6fd9e6;
-    --teal-soft: #10333b;
-    --green: #4cbe7b;
-    --green-bright: #6bd14a;
-    --green-soft: #12321f;
-
-    --ink: #e8ecf2;
-    --muted: #98a2b3;
-    --line: #2a3342;
-    --surface: #171e2b;
-    --bg: #11161f;
-
-    --amber: #d9862b;
-    --amber-bg: #2b2010;
-    --amber-border: #43301a;
-    --amber-soft: #f0b54a;
-    --amber-soft-bg: #33260d;
-    --amber-soft-border: #4d3913;
-
-    --red: #f07171;
-    --red-bg: #34191c;
-    --red-border: #4e2226;
-
-    --info: #7ba4f5;
-    --info-bg: #182541;
-    --info-border: #253a66;
-
-    /* Choisi sur le fond sombre, pas éclairci depuis la valeur claire. */
-    --violet: #bda4f7;
-    --violet-bg: #221a3a;
-    --violet-border: #372a5e;
-
-    --focus: 0 0 0 3px rgb(53 194 212 / 0.35);
-  }
 }
 
 html {
@@ -153,6 +95,97 @@ body {
   transform: translateX(6px);
 }
 
+/* Onglets du CRM 3 (Kit §10 bis / ter) : barre collée, pastille glissante.
+   La pastille : élément extérieur = trajet, intérieur = étirement + habillage. */
+.sdc-tabbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: var(--bg);
+  padding-top: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.sdc-fondu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 1px);
+  pointer-events: none;
+  border-image: linear-gradient(to bottom, var(--bg), rgb(243 246 247 / 0)) fill 0 / 0 / 0 100vmax;
+  transition: opacity 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.sdc-tab {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  padding: 8px 13px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background-color: transparent;
+  transition: color 0.24s, background 0.16s;
+}
+.sdc-tab-porte {
+  background-color: var(--surface);
+  border-color: #c9dcd6;
+  box-shadow: 0 1px 2px rgb(16 42 38 / 0.05);
+}
+.sdc-tab:hover {
+  color: var(--ink) !important;
+}
+.sdc-tab:not([aria-selected='true']):hover {
+  background-color: #f8fafb;
+}
+.sdc-tab-i {
+  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.sdc-tab:hover .sdc-tab-i,
+.sdc-tab:focus-visible .sdc-tab-i {
+  transform: translateY(-1.5px);
+}
+.sdc-ind {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition:
+    transform 0.42s cubic-bezier(0.34, 1.22, 0.46, 1),
+    width 0.42s cubic-bezier(0.34, 1.22, 0.46, 1),
+    height 0.42s cubic-bezier(0.34, 1.22, 0.46, 1);
+}
+.sdc-ind-i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid #c9dcd6;
+  box-shadow: 0 1px 2px rgb(16 42 38 / 0.05);
+}
+.sdc-ind-elan {
+  animation: sdc-ind-elan 0.44s cubic-bezier(0.24, 0.8, 0.3, 1) both;
+}
+@keyframes sdc-ind-elan {
+  0% {
+    transform: scale(1, 1);
+  }
+  36% {
+    transform: scale(var(--sdc-sx, 1.06), calc(2 - var(--sdc-sx, 1.06)));
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
 /* Le thumb glissant du segmented control. */
 .seg-thumb {
   transition:
@@ -163,7 +196,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .btn-arrow,
   .group:hover .btn-arrow,
-  .seg-thumb {
+  .seg-thumb,
+  .sdc-ind,
+  .sdc-fondu,
+  .sdc-tab-i {
     transition: none;
     transform: none;
   }
@@ -237,6 +273,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sdc-ind-elan {
+    animation: none;
+  }
   .progress-sweep {
     animation: none;
     width: 100%;

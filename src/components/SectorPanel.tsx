@@ -37,6 +37,7 @@ import { auditStaff, type Anomaly } from '../lib/staffAudit';
 import { coverageByStaff, formatCoverage, territoryKey } from '../lib/territories';
 import { formatPersonName } from '../lib/format';
 import { Callout, SearchField, SecondaryButton } from './ui';
+import { ListeChoix } from './kit';
 import { SearchableSelect } from './SearchableSelect';
 
 interface Props {
@@ -71,7 +72,7 @@ export function SectorModal({ onClose, ...panel }: Props & { onClose: () => void
 
   return (
     <div
-      className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="modal-overlay fixed inset-0 z-[2000] flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -368,23 +369,18 @@ export function SectorPanel({
 
                   <td className="px-4 py-2">
                     {canWrite ? (
-                      <select
-                        value={row.region}
-                        disabled={busy}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          void write(row, { [TERRITORY.region]: value }, { region: value });
-                        }}
-                        className="w-full min-w-[11rem] rounded-control border border-line bg-surface px-2 py-1 text-ink"
-                        aria-label={`Région du secteur ${row.code}`}
-                      >
-                        <option value="">—</option>
-                        {REGIONS.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="min-w-[11rem]">
+                        <ListeChoix
+                          compact
+                          ariaLabel={`Région du secteur ${row.code}`}
+                          attente="—"
+                          value={row.region}
+                          onChange={(value) => {
+                            void write(row, { [TERRITORY.region]: value }, { region: value });
+                          }}
+                          options={[{ v: '', l: '—' }, ...REGIONS.map((r) => ({ v: r, l: r }))]}
+                        />
+                      </div>
                     ) : (
                       <span className="text-ink">{row.region || '—'}</span>
                     )}
@@ -628,21 +624,17 @@ function NewRow({
           />
         </label>
 
-        <label className="block">
+        <div className="block w-52">
           <span className="mb-1 block text-xs font-medium text-muted">Région</span>
-          <select
+          <ListeChoix
+            compact
+            ariaLabel="Région du nouveau secteur"
+            attente="—"
             value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            className="w-52 rounded-control border border-line bg-surface px-2 py-1.5 text-ink"
-          >
-            <option value="">—</option>
-            {REGIONS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={setRegion}
+            options={[{ v: '', l: '—' }, ...REGIONS.map((r) => ({ v: r, l: r }))]}
+          />
+        </div>
 
         <div className="min-w-[13rem]">
           <span className="mb-1 block text-xs font-medium text-muted">Commercial</span>

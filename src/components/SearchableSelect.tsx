@@ -11,9 +11,15 @@
  *  - clic à l'extérieur et perte de focus referment aussi ;
  *  - navigation clavier complète, avec `aria-activedescendant` pour que le
  *    lecteur d'écran suive l'option survolée.
+ *
+ * Depuis le 23/11/2026, menu au gabarit `Deroulant` du Kit CRM 3 (§15 ter) :
+ * `position: fixed` calé sur le bouton (zIndex 2500, au-dessus des pop-ups et
+ * des cartes, qu'on hisse pendant l'ouverture), ouverture et choix au
+ * `mousedown`, fermé au défilement hors du menu et au redimensionnement.
  */
 import { Check, ChevronDown, Search, X } from 'lucide-react';
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { T, clicDehors, hisserCadres, tkPress } from './kit';
 
 export interface SelectOption {
   value: string;
@@ -70,12 +76,14 @@ export function SearchableSelect({
 
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sens d'ouverture et hauteur disponible, mesurés à l'ouverture. Ouvrir
-  // systématiquement vers le bas rendait la liste inutilisable dès que le
-  // champ se trouvait en bas d'une modale courte.
-  const [placement, setPlacement] = useState<'below' | 'above'>('below');
+  // Position (fixe, calée sur le bouton) et hauteur disponible, mesurées à
+  // l'ouverture. Ouvrir systématiquement vers le bas rendait la liste
+  // inutilisable dès que le champ se trouvait en bas d'une modale courte.
+  const [pos, setPos] = useState<CSSProperties | null>(null);
   const [listHeight, setListHeight] = useState(224);
 
   const collator = useMemo(() => new Intl.Collator('fr', { sensitivity: 'base' }), []);
@@ -133,21 +141,36 @@ export function SearchableSelect({
 
   const selected = options.find((o) => o.value === value);
 
-  // Fermeture au clic extérieur.
+  // Fermeture au clic extérieur (lu sur `composedPath` : Shadow DOM de
+  // Softr), au défilement hors du menu et au redimensionnement. Les cadres
+  // parents qui enfermeraient le zIndex du menu sont hissés pendant l'ouverture.
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      // `composedPath` et non `contains(e.target)` : dans le bloc Softr, l'app
-      // vit dans un Shadow DOM et la cible vue du document est l'hôte du bloc.
-      if (!rootRef.current || !e.composedPath().includes(rootRef.current)) setOpen(false);
+    const rendre = hisserCadres(btnRef.current);
+    const fermer = () => setOpen(false);
+    const dehors = (e: MouseEvent) => {
+      if (clicDehors(e, rootRef.current) && clicDehors(e, menuRef.current)) fermer();
     };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
+    const defile = (e: Event) => {
+      if (!e.composedPath?.().includes(menuRef.current as EventTarget)) fermer();
+    };
+    document.addEventListener('mousedown', dehors);
+    window.addEventListener('scroll', defile, true);
+    window.addEventListener('resize', fermer);
+    return () => {
+      rendre();
+      document.removeEventListener('mousedown', dehors);
+      window.removeEventListener('scroll', defile, true);
+      window.removeEventListener('resize', fermer);
+    };
   }, [open]);
 
   useLayoutEffect(() => {
-    if (!open) return;
-    const rect = rootRef.current?.getBoundingClientRect();
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const rect = btnRef.current?.getBoundingClientRect();
     if (!rect) return;
 
     const MARGIN = 12;
@@ -158,7 +181,13 @@ export function SearchableSelect({
     // On préfère le bas ; on bascule vers le haut seulement s'il y est
     // vraiment plus à l'aise.
     const flip = below < 200 && above > below;
-    setPlacement(flip ? 'above' : 'below');
+    const largeur = Math.max(240, rect.width);
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - largeur - 8));
+    setPos(
+      flip
+        ? { left, width: largeur, bottom: window.innerHeight - rect.top + 6 }
+        : { left, width: largeur, top: rect.bottom + 6 },
+    );
     setListHeight(
       Math.max(120, Math.min(288, (flip ? above : below) - SEARCH_ROW)),
     );
@@ -206,8 +235,9 @@ export function SearchableSelect({
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        {...tkPress(() => setOpen((o) => !o))}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
@@ -227,12 +257,16 @@ export function SearchableSelect({
 
       {open && (
         <div
-          // `z-40` et non `z-10` : l'en-tête collant de la vue liste est en
-          // `z-10` et, plus loin dans le DOM, il peignait par-dessus la liste
-          // déroulante — qui apparaissait coupée en deux.
-          className={`absolute z-40 w-full overflow-hidden rounded-control border border-line bg-surface shadow-lg ${
-            placement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'
-          }`}
+          ref={menuRef}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="overflow-hidden rounded-[12px] border border-line bg-surface"
+          style={{
+            position: 'fixed',
+            zIndex: 2500,
+            ...(pos ?? { visibility: 'hidden' }),
+            boxShadow: '0 16px 36px -12px rgba(16,26,40,.28), 0 2px 6px rgba(16,26,40,.06)',
+            fontFamily: T.font,
+          }}
         >
           <div className="flex items-center gap-2 border-b border-line px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-muted" strokeWidth={2} aria-hidden="true" />
@@ -256,7 +290,11 @@ export function SearchableSelect({
             {query && (
               <button
                 type="button"
-                onClick={() => setQuery('')}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setQuery('');
+                  inputRef.current?.focus();
+                }}
                 aria-label="Effacer la recherche"
                 className="shrink-0 rounded-full p-0.5 text-muted hover:text-ink"
               >
@@ -291,10 +329,17 @@ export function SearchableSelect({
                     role="option"
                     aria-selected={isSelected}
                     onMouseEnter={() => setCursor(i)}
-                    onClick={() => commit(row.value)}
-                    className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm ${
-                      isCursor ? 'bg-teal-soft' : ''
-                    } ${isSelected ? 'font-semibold text-teal-ink' : 'text-ink'}`}
+                    onMouseDown={(e) => {
+                      if (e.button !== 0) return;
+                      e.preventDefault();
+                      commit(row.value);
+                    }}
+                    onClick={(e) => {
+                      if (e.detail === 0) commit(row.value);
+                    }}
+                    className={`mx-1.5 flex cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-[13.5px] ${
+                      isCursor ? 'bg-[#f8fafb]' : isSelected ? 'bg-teal-soft' : ''
+                    } ${isSelected ? 'font-bold text-ink' : 'font-medium text-ink'}`}
                   >
                     <Check
                       className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'opacity-100' : 'opacity-0'}`}

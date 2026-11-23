@@ -32,6 +32,7 @@ import { shortMotive } from '../lib/motives';
 import { formatLocality, type Lead } from '../lib/records';
 import { TONE_CLASS } from '../lib/tones';
 import { DuplicateBadge, PriorityBadge, StatusBadge } from './ui';
+import { Tooltip } from './kit';
 
 /**
  * Icône de catégorie. Conservée parce qu'elle porte une information — le type
@@ -101,12 +102,11 @@ export function LeadCard({
           <h3 className="min-w-0 flex-1 truncate font-semibold text-ink">
             {formatPersonName(lead.fullName)}
           </h3>
-          <span
+          <Tooltip content={`Reçue il y a ${days ?? '?'} jour(s)`}><span
             className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${TONE_CLASS[tone]}`}
-            title={`Reçue il y a ${days ?? '?'} jour(s)`}
           >
             {formatAge(days)}
-          </span>
+          </span></Tooltip>
         </div>
 
         <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
@@ -131,9 +131,9 @@ export function LeadCard({
 
         {/* ---- décision ---- */}
         {lead.motive && (
-          <p className="mt-3 truncate text-sm font-semibold text-ink" title={lead.motive}>
+          <Tooltip content={lead.motive}><p className="mt-3 truncate text-sm font-semibold text-ink">
             {shortMotive(lead.motive)}
-          </p>
+          </p></Tooltip>
         )}
 
         {/* Style éditorial : le message est la voix du demandeur, pas une

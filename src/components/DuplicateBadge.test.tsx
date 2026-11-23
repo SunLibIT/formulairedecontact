@@ -51,7 +51,8 @@ describe('DuplicateBadge', () => {
     fireEvent.click(screen.getByRole('button', { name: /archiver cette demande/i }));
 
     await waitFor(() => expect(screen.getByText('Échec')).toBeTruthy());
-    expect(screen.getByRole('button').getAttribute('title')).toBe('Airtable a refusé');
+    // Message porté par le nom accessible (et l'infobulle du Kit, plus de `title`).
+    expect(screen.getByRole('button').getAttribute('aria-label')).toContain('Airtable a refusé');
   });
 
   it('n’ouvre pas la fiche derrière elle', () => {

@@ -14,6 +14,7 @@ import { CalendarRange } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { shiftIso, todayIso } from '../lib/dates';
 import type { FilterState } from '../lib/filters';
+import { ChampDate } from './kit';
 import { SegmentedFilter } from './ui';
 
 type Preset = 'all' | '7d' | '30d' | '3m' | 'custom';
@@ -131,26 +132,24 @@ export function PeriodFilter({
 
       {preset === 'custom' && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-xs font-medium text-muted">
-            du
-            <input
-              type="date"
-              className="field w-auto"
+          <div className="flex items-center gap-2 text-xs font-medium text-muted">
+            <span>du</span>
+            <ChampDate
+              ariaLabel="Début de la période"
               value={filters.from}
               max={filters.to || undefined}
-              onChange={(e) => onChange({ from: e.target.value })}
+              onChange={(v) => onChange({ from: v })}
             />
-          </label>
-          <label className="flex items-center gap-2 text-xs font-medium text-muted">
-            au
-            <input
-              type="date"
-              className="field w-auto"
+          </div>
+          <div className="flex items-center gap-2 text-xs font-medium text-muted">
+            <span>au</span>
+            <ChampDate
+              ariaLabel="Fin de la période"
               value={filters.to}
               min={filters.from || undefined}
-              onChange={(e) => onChange({ to: e.target.value })}
+              onChange={(v) => onChange({ to: v })}
             />
-          </label>
+          </div>
         </div>
       )}
 

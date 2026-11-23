@@ -19,6 +19,7 @@
 import { useState, type ReactNode } from 'react';
 import type { Tone } from '../lib/schema';
 import { TONE_FILL, TONE_ICON } from '../lib/tones';
+import { Tooltip } from './kit';
 
 /** Teinte unique des barres nominales — accent de la charte. */
 const NOMINAL_FILL = 'var(--teal)';
@@ -118,9 +119,9 @@ export function HBars({
                   aria-hidden="true"
                 />
               )}
-              <span className="truncate" title={d.label}>
+              <Tooltip content={d.label}><span className="truncate">
                 {d.label}
-              </span>
+              </span></Tooltip>
             </span>
 
             {/* Piste discrète, barre fine à extrémité arrondie. */}

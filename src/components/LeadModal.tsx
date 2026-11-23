@@ -63,7 +63,8 @@ import {
   type CoverageIndex,
   type SectorIndex,
 } from '../lib/territories';
-import { TONE_CLASS, statusChipStyle } from '../lib/tones';
+import { TONE_STYLE, statusChipStyle } from '../lib/tones';
+import { ListeChoix, Tooltip } from './kit';
 import { WRITE_TARGET, statusWrite } from '../lib/writeTargets';
 import { SearchableSelect } from './SearchableSelect';
 import { Callout, PriorityBadge, RelativeDate, SecondaryButton, StatusBadge } from './ui';
@@ -188,7 +189,7 @@ export function LeadModal({
       // le fond cesse d'être lisible, un flou qui le repousse, et l'ombre
       // portée du panneau. Le voile à 40 % sans flou laissait une surface
       // blanche sur un fond quasi blanc, impossible à distinguer.
-      className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="modal-overlay fixed inset-0 z-[2000] flex items-end justify-center bg-ink/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -371,58 +372,54 @@ export function LeadModal({
                   Statut
                 </label>
                 <div className="flex items-center gap-2">
-                  <select
-                    id={statusId}
-                    data-autofocus
-                    className="field min-w-0 flex-1 font-semibold"
-                    style={statusChipStyle(status.color)}
-                    value={status.id}
-                    onChange={(e) => {
-                      const next = statuses.byId.get(e.target.value);
-                      if (next) setStatus(next);
-                    }}
-                  >
+                  <span className="min-w-0 flex-1">
                     {/* Un statut archivé ou hérité reste dans la liste quand la
                         demande le porte, pour ne pas le réécrire en silence. */}
-                    {selectableStatuses(statuses, status).map((s) => (
-                      <option key={s.id} value={s.id} className="bg-surface font-normal text-ink">
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                    <ListeChoix
+                      id={statusId}
+                      autoFocus
+                      ariaLabel="Statut"
+                      value={status.id}
+                      onChange={(v) => {
+                        const next = statuses.byId.get(v);
+                        if (next) setStatus(next);
+                      }}
+                      options={selectableStatuses(statuses, status).map((st) => ({
+                        v: st.id,
+                        l: st.name,
+                        rendu: <PastilleStatut nom={st.name} couleur={st.color} />,
+                      }))}
+                      style={{ ...statusChipStyle(status.color), fontWeight: 600 }}
+                    />
+                  </span>
                   {onManageStatuses && (
-                    <button
+                    <Tooltip content="Gérer les statuts"><button
                       type="button"
                       onClick={onManageStatuses}
                       className="inline-flex shrink-0 items-center justify-center self-stretch rounded-control px-2.5 border border-line bg-surface text-muted transition-colors hover:text-ink focus-visible:shadow-focus focus-visible:outline-none"
                       aria-label="Gérer les statuts"
-                      title="Gérer les statuts"
                     >
                       <Settings2 className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-                    </button>
+                    </button></Tooltip>
                   )}
                 </div>
               </div>
 
-              <Label text="Priorité">
-                <select
-                  className={`field font-semibold ${TONE_CLASS[PRIORITY_TONE[priority]]}`}
+              <Champ text="Priorité">
+                <ListeChoix
+                  ariaLabel="Priorité"
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value as Priority)}
-                >
-                  {PRIORITIES.map((p) => (
-                    <option key={p} value={p} className="bg-surface font-normal text-ink">
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </Label>
+                  onChange={(v) => setPriority(v as Priority)}
+                  options={PRIORITIES.map((p) => ({ v: p, l: p }))}
+                  style={{ ...TONE_STYLE[PRIORITY_TONE[priority]], fontWeight: 600 }}
+                />
+              </Champ>
 
               {/* Pleine largeur : la liste déroulante doit avoir la place
                   d'afficher un nom complet et les départements qu'il couvre
                   sans troncature. */}
               <div className="sm:col-span-2">
-                <Label text="Assigné à">
+                <Champ text="Assigné à">
                   {/* 35 collaborateurs : un select natif se parcourt à l'œil,
                       celui-ci se filtre au clavier et trie alphabétiquement. */}
                   <SearchableSelect
@@ -434,7 +431,7 @@ export function LeadModal({
                     options={assigneeOptions}
                     groups={staffGroups(sector)}
                   />
-                </Label>
+                </Champ>
               </div>
 
               <div className="sm:col-span-2">
@@ -533,6 +530,26 @@ function Field({
       </dt>
       <dd className="mt-0.5 break-words text-sm text-ink">{children}</dd>
     </div>
+  );
+}
+
+/** Libellé posé au-dessus d'un menu du Kit : jamais de `<label>` autour d'un `Deroulant`. */
+function Champ({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <div className="block">
+      <span className="mb-1.5 block text-xs font-medium text-muted">{text}</span>
+      {children}
+    </div>
+  );
+}
+
+/** Option de statut : pastille ronde à la couleur Airtable du statut. */
+function PastilleStatut({ nom, couleur }: { nom: string; couleur: string }) {
+  return (
+    <>
+      <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: '50%', flex: 'none', background: couleur }} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nom}</span>
+    </>
   );
 }
 

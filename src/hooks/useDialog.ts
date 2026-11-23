@@ -10,6 +10,7 @@
  * différents, dont un cassé.
  */
 import { useEffect, useRef } from 'react';
+import { capterDefilement } from '../components/kit';
 
 /** Ce qui peut recevoir le focus dans une boîte de dialogue. */
 const FOCUSABLE =
@@ -80,10 +81,15 @@ export function useDialog(onClose: () => void) {
     document.addEventListener('keydown', onKey);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    // Défilement captif (CRM 3, 26/10) : dans Softr, `body` n'est pas ce qui
+    // défile ; la molette passait à la page derrière le voile. Le voile (parent
+    // du panneau) ne laisse défiler que les zones défilantes de la boîte.
+    const relacher = capterDefilement(node?.parentElement ?? node ?? document.body);
 
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
+      relacher();
       // Rendre le focus là où il était : sans cela, on se retrouve en haut de
       // page après avoir fermé une fiche ouverte depuis le bas d'une liste.
       (restoreTo.current as HTMLElement | null)?.focus?.();

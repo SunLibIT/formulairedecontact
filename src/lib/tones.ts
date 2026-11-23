@@ -11,7 +11,7 @@
  *
  * | Ton         | Couleur      | Icône             |
  * |-------------|--------------|-------------------|
- * | `fresh`     | vert         | étincelle         |
+ * | `fresh`     | vert         | boîte de réception |
  * | `action`    | ambre clair  | horloge           |
  * | `followup`  | ambre foncé  | flèche de reprise |
  * | `qualified` | bleu         | coche             |
@@ -25,8 +25,8 @@ import {
   Circle,
   Clock,
   FileSignature,
+  Inbox,
   RotateCcw,
-  Sparkle,
   type LucideIcon,
 } from 'lucide-react';
 import type { CSSProperties } from 'react';
@@ -41,6 +41,20 @@ export const TONE_CLASS: Record<Tone, string> = {
   qualified: 'bg-info-bg text-info border-info-border',
   signed: 'bg-violet-bg text-violet border-violet-border',
   rejected: 'bg-danger-bg text-danger border-danger-border',
+};
+
+/**
+ * Même pastille en style en ligne, pour les menus du Kit CRM 3 (`ListeChoix`)
+ * dont le bouton est habillé en `style`.
+ */
+export const TONE_STYLE: Record<Tone, CSSProperties> = {
+  neutral: { backgroundColor: 'var(--bg)', color: 'var(--muted)', borderColor: 'var(--line)' },
+  fresh: { backgroundColor: 'var(--green-soft)', color: 'var(--green)', borderColor: 'var(--green-soft)' },
+  action: { backgroundColor: 'var(--amber-soft-bg)', color: 'var(--amber-soft)', borderColor: 'var(--amber-soft-border)' },
+  followup: { backgroundColor: 'var(--amber-bg)', color: 'var(--amber)', borderColor: 'var(--amber-border)' },
+  qualified: { backgroundColor: 'var(--info-bg)', color: 'var(--info)', borderColor: 'var(--info-border)' },
+  signed: { backgroundColor: 'var(--violet-bg)', color: 'var(--violet)', borderColor: 'var(--violet-border)' },
+  rejected: { backgroundColor: 'var(--red-bg)', color: 'var(--red)', borderColor: 'var(--red-border)' },
 };
 
 /** Fond et texte seuls, sans bordure — pour les pastilles d'icône. */
@@ -74,7 +88,7 @@ export const TONE_FILL: Record<Tone, string> = {
 
 export const TONE_ICON: Record<Tone, LucideIcon> = {
   neutral: Circle,
-  fresh: Sparkle,
+  fresh: Inbox,
   action: Clock,
   followup: RotateCcw,
   qualified: Check,
